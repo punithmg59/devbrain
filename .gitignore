@@ -1,0 +1,37 @@
+cat > .gitignore << 'EOF'
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+
+# Environment files — NEVER commit these
+backend/.env
+frontend/.env
+.env
+
+# Node
+node_modules/
+dist/
+.next/
+
+# Git clones (temp analysis folders)
+/tmp/
+backend/tmp/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Alembic
+backend/alembic/versions/*.pyc
+EOF
