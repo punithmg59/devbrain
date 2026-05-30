@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Loader2, Sparkles, X } from "lucide-react";
 import { getFile, summarizeNode } from "../services/repoDetailService";
 import type { FileDetail, NodeResponse } from "../types/repo";
-import LoadingSpinner from "./LoadingSpinner";
+import LoadingSpinner from "./ui/LoadingSpinner";
 import ErrorState from "./ErrorState";
 
 interface FileDetailPanelProps {

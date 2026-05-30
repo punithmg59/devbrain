@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { ArrowRight, Loader2, Sparkles, X } from "lucide-react";
 import { getNode, summarizeNode } from "../services/repoDetailService";
 import type { NodeDetail, NodeRelation } from "../types/repo";
-import LoadingSpinner from "./LoadingSpinner";
+import LoadingSpinner from "./ui/LoadingSpinner";
 
 interface NodeDetailPanelProps {
   repoId: string;
