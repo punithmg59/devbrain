@@ -1,4 +1,17 @@
 from .auth import UserResponse, SessionResponse
+from .impact import (
+    AffectedAPI,
+    DeploymentAdvice,
+    GraphEdge,
+    GraphNode,
+    ImpactFile,
+    ImpactGraph,
+    ImpactNode,
+    ImpactRequest,
+    ImpactResult,
+    ResolvedEntity,
+    TestRecommendation,
+)
 from .repo import GitHubRepoItem, RepoResponse, ConnectRepoRequest
 from .repo_detail import (
     ApiRoutesResponse,
@@ -26,6 +39,17 @@ from .repo_detail import (
 )
 
 __all__ = [
+    "AffectedAPI",
+    "DeploymentAdvice",
+    "GraphEdge",
+    "GraphNode",
+    "ImpactFile",
+    "ImpactGraph",
+    "ImpactNode",
+    "ImpactRequest",
+    "ImpactResult",
+    "ResolvedEntity",
+    "TestRecommendation",
     "UserResponse",
     "SessionResponse",
     "GitHubRepoItem",

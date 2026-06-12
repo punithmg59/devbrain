@@ -1,9 +1,9 @@
 import { useEffect, useState, useMemo } from "react";
 import { Search, Folder, FolderOpen, File, ChevronRight, ChevronDown } from "lucide-react";
-import { getFileTree, getFiles, getFile } from "../services/repoDetailService";
-import type { FileTreeNode, FileResponse } from "../types/repo";
+import { getFileTree } from "../services/repoDetailService";
+import type { FileTreeNode } from "../types/repo";
 import LoadingSpinner from "./ui/LoadingSpinner";
-import ErrorState from "./ui/ErrorState";
+import ErrorState from "./ErrorState";
 
 interface FileTreeProps {
   repoId: string;

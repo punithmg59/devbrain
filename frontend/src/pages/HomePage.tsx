@@ -15,7 +15,8 @@ const features = [
   {
     icon: Zap,
     title: "Impact Radar",
-    description: "Know what breaks before you change it",
+    description:
+      "Live now — trace dependency graphs and see what breaks before you ship a change",
   },
   {
     icon: Brain,

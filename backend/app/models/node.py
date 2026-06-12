@@ -14,7 +14,7 @@ from sqlalchemy import (
     func,
     text,
 )
-from sqlalchemy.dialects.postgresql import ARRAY, UUID
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -59,6 +59,12 @@ class Node(Base):
     http_method: Mapped[str | None] = mapped_column(String(10), nullable=True)
     route_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
     summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    detailed_explanation: Mapped[str | None] = mapped_column(Text, nullable=True)
+    architecture_role: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    complexity_level: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    call_flow_diagram: Mapped[str | None] = mapped_column(Text, nullable=True)
+    ai_tags: Mapped[list[str]] = mapped_column(JSONB, default=list, server_default="[]")
+    potential_risks: Mapped[list[str]] = mapped_column(JSONB, default=list, server_default="[]")
     tags: Mapped[list[str]] = mapped_column(ARRAY(String), default=list, server_default="{}")
     is_exported: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     is_async: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")

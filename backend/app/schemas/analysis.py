@@ -24,3 +24,4 @@ class AnalysisStatusResponse(BaseModel):
         if v is None:
             return None
         return str(v)
+ 

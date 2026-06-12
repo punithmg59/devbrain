@@ -45,6 +45,18 @@ export interface NodeResponse {
   http_method: string | null;
   route_path: string | null;
   summary: string | null;
+  detailed_explanation?: string | null;
+  architecture_role?: string | null;
+  complexity_level?: string | null;
+  call_flow_diagram?: string | null;
+  ai_tags?: string[];
+  potential_risks?: string[];
+  dependencies?: string[];
+  responsibilities?: string[];
+  inputs?: string[];
+  outputs?: string[];
+  related_components?: string[];
+  call_flow?: string[];
   tags: string[];
   is_exported: boolean;
   is_async: boolean;
@@ -91,19 +103,38 @@ export interface FileDetail {
 }
 
 export interface NodeRelation {
+  edge_id: string;
   node_id: string;
   name: string;
   type: string;
-  file_path: string;
+  full_path: string;
+  file_path?: string;
+  edge_type: string;
 }
 
-export interface NodeDetail {
+export interface DependencyRisk {
+  score: number;
+  level: "low" | "medium" | "high" | "critical";
+  reason: string;
+}
+
+export interface NodeDependenciesResponse {
   node: NodeResponse;
-  file: FileResponse | null;
   calls: NodeRelation[];
   called_by: NodeRelation[];
+  api_routes: NodeRelation[];
+  reads_tables: NodeRelation[];
+  writes_tables: NodeRelation[];
+  updates_tables: NodeRelation[];
+  deletes_tables: NodeRelation[];
+  services: NodeRelation[];
+  auth_dependencies: NodeRelation[];
+  imports: NodeRelation[];
+  inherits: NodeRelation[];
+  contains: NodeRelation[];
+  dependency_injections: NodeRelation[];
+  risk: DependencyRisk;
 }
-
 export interface ApiRoutes {
   routes: NodeResponse[];
   total: number;
@@ -112,6 +143,18 @@ export interface ApiRoutes {
 export interface NodeSummary {
   node_id: string;
   summary: string;
+  detailed_explanation?: string | null;
+  architecture_role?: string | null;
+  complexity_level?: string | null;
+  call_flow_diagram?: string | null;
+  ai_tags?: string[];
+  potential_risks?: string[];
+  dependencies?: string[];
+  responsibilities?: string[];
+  inputs?: string[];
+  outputs?: string[];
+  related_components?: string[];
+  call_flow?: string[];
   tags: string[];
 }
 

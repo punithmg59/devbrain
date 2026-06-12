@@ -9,13 +9,13 @@ import type {
   BatchSummarize,
   FileDetail,
   FileTreeNode,
-  NodeDetail,
   NodeSummary,
   PaginatedFiles,
   PaginatedNodes,
   RepoDetail,
   RepoStats,
 } from "../types/repo";
+import type { ProjectBrainResponse } from "../types/projectBrain";
 
 // ── Repo detail ────────────────────────────────────────────────
 
@@ -87,12 +87,14 @@ export async function getNodes(
   }
 }
 
-export async function getNode(repoId: string, nodeId: string): Promise<NodeDetail> {
+
+
+export async function getNodeDependencies(repoId: string, nodeId: string): Promise<import("../types/repo").NodeDependenciesResponse> {
   try {
-    const res = await API.get(`/api/repos/${repoId}/nodes/${nodeId}`);
+    const res = await API.get(`/api/repos/${repoId}/nodes/${nodeId}/dependencies`);
     return res.data;
   } catch (err: any) {
-    throw new Error(err.response?.data?.detail ?? "Failed to load node");
+    throw new Error(err.response?.data?.detail ?? "Failed to load node dependencies");
   }
 }
 
@@ -128,8 +130,7 @@ export async function summarizeNode(
   try {
     const res = await API.post(
       `/api/repos/${repoId}/nodes/${nodeId}/summarize`,
-      null,
-      { params: force ? { force: true } : undefined }
+      { force: force || false }
     );
     return res.data;
   } catch (err: any) {
@@ -143,5 +144,16 @@ export async function summarizeAll(repoId: string): Promise<BatchSummarize> {
     return res.data;
   } catch (err: any) {
     throw new Error(err.response?.data?.detail ?? "Failed to start batch summarization");
+  }
+}
+
+// ── Project Brain ──────────────────────────────────────────────
+
+export async function getProjectBrainDashboard(repoId: string): Promise<ProjectBrainResponse> {
+  try {
+    const res = await API.get(`/api/repos/${repoId}/project-brain`);
+    return res.data;
+  } catch (err: any) {
+    throw new Error(err.response?.data?.detail ?? "Failed to load Project Brain dashboard");
   }
 }

@@ -1,8 +1,13 @@
 import { useEffect } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 import useAuthStore from "./hooks/useAuthStore";
+import { ToastProvider } from "./components/Toast";
+import ErrorBoundary from "./components/ErrorBoundary";
 import HomePage from "./pages/HomePage";
 import DashboardPage from "./pages/DashboardPage";
+import RepoDetailPage from "./pages/RepoDetailPage";
+import ImpactRadarPage from "./pages/ImpactRadarPage";
+import ProjectBrainPage from "./pages/ProjectBrainPage";
 import AuthErrorPage from "./pages/AuthErrorPage";
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -32,7 +37,8 @@ function App() {
   }
 
   return (
-    <Routes>
+    <ToastProvider>
+      <Routes>
       <Route path="/" element={<HomePage />} />
       <Route
         path="/dashboard"
@@ -42,8 +48,35 @@ function App() {
           </ProtectedRoute>
         }
       />
+      <Route
+        path="/repos/:repoId"
+        element={
+          <ProtectedRoute>
+            <ErrorBoundary>
+              <RepoDetailPage />
+            </ErrorBoundary>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/repos/:repoId/impact"
+        element={
+          <ProtectedRoute>
+            <ImpactRadarPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/repos/:repoId/project-brain"
+        element={
+          <ProtectedRoute>
+            <ProjectBrainPage />
+          </ProtectedRoute>
+        }
+      />
       <Route path="/auth/error" element={<AuthErrorPage />} />
     </Routes>
+    </ToastProvider>
   );
 }
 

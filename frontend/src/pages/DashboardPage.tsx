@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { GitBranch, Loader2, Play, RefreshCw } from "lucide-react";
+import { Link } from "react-router-dom";
+import { GitBranch, Loader2, Play, RefreshCw, Zap } from "lucide-react";
 import useAuthStore from "../hooks/useAuthStore";
 import ConnectRepoModal from "../components/ConnectRepoModal";
 import { ConnectedRepo, repoService } from "../services/repoService";
@@ -214,7 +215,24 @@ export default function DashboardPage() {
                         )}
                       </div>
                     </div>
-                    <div className="flex items-center gap-2 shrink-0">
+                    <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
+                      {repo.analysis_status === "completed" && (
+                        <>
+                          <Link
+                            to={`/repos/${repo.id}`}
+                            className="px-3 py-1.5 text-sm border border-gray-600 hover:border-gray-500 rounded-lg transition-colors"
+                          >
+                            View Details
+                          </Link>
+                          <Link
+                            to={`/repos/${repo.id}/impact`}
+                            className="flex items-center gap-1 px-3 py-1.5 text-sm border border-purple-600 text-purple-400 hover:bg-purple-900/30 rounded-lg transition-colors"
+                          >
+                            <Zap className="w-3.5 h-3.5" />
+                            Impact Radar
+                          </Link>
+                        </>
+                      )}
                       {canAnalyze && (
                         <button
                           onClick={() => handleAnalyze(repo.id)}

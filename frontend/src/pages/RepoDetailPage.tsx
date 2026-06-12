@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import {
   ArrowLeft,
@@ -17,6 +17,7 @@ import {
   RefreshCw,
   Search,
   Sparkles,
+  Zap,
 } from "lucide-react";
 
 import {
@@ -198,31 +199,41 @@ const NodeCard = ({
       onClick={onClick}
       className="p-3 bg-gray-900/50 border border-gray-800 rounded-lg hover:border-gray-700 cursor-pointer transition-colors"
     >
-      <div className="flex items-center gap-2 mb-1 flex-wrap">
-        <span className="font-medium text-sm text-gray-200">{node.name}</span>
-        <span
-          className={`px-1.5 py-0.5 text-[10px] font-medium rounded border ${
-            typeBadge[node.node_type] ?? "bg-gray-800 text-gray-400 border-gray-700"
-          }`}
-        >
-          {node.node_type}
-        </span>
-        {node.is_async && (
-          <span className="px-1.5 py-0.5 text-[10px] bg-yellow-900/30 text-yellow-400 border border-yellow-700/30 rounded">
-            async
+      <div className="flex items-center justify-between mb-1">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="font-medium text-sm text-gray-200">{node.name}</span>
+          <span
+            className={`px-1.5 py-0.5 text-[10px] font-medium rounded border ${
+              typeBadge[node.node_type] ?? "bg-gray-800 text-gray-400 border-gray-700"
+            }`}
+          >
+            {node.node_type}
           </span>
-        )}
-        {node.is_exported && (
-          <span className="px-1.5 py-0.5 text-[10px] bg-emerald-900/30 text-emerald-400 border border-emerald-700/30 rounded">
-            exported
-          </span>
-        )}
+          {node.is_async && (
+            <span className="px-1.5 py-0.5 text-[10px] bg-yellow-900/30 text-yellow-400 border border-yellow-700/30 rounded">
+              async
+            </span>
+          )}
+          {node.is_exported && (
+            <span className="px-1.5 py-0.5 text-[10px] bg-emerald-900/30 text-emerald-400 border border-emerald-700/30 rounded">
+              exported
+            </span>
+          )}
+        </div>
+        <div className="text-[10px] text-gray-500 bg-gray-800/50 px-2 py-0.5 rounded">
+          Complexity: {node.complexity_score?.toFixed(1) ?? "0.0"}
+        </div>
       </div>
       <p className="text-[11px] text-gray-600 font-mono truncate">{node.full_path}</p>
       {node.start_line != null && node.end_line != null && (
-        <p className="text-[11px] text-gray-600">
+        <p className="text-[11px] text-gray-600 mt-0.5">
           Lines {node.start_line} – {node.end_line}
         </p>
+      )}
+      {node.signature && (
+        <div className="mt-2 p-2 bg-[#0b0b0b] rounded border border-gray-800 text-[10px] text-gray-400 font-mono overflow-x-auto whitespace-pre">
+          {node.signature}
+        </div>
       )}
       {node.summary ? (
         <div className="mt-2">
@@ -339,6 +350,7 @@ export default function RepoDetailPage() {
   const [nodesTotal, setNodesTotal] = useState(0);
   const [nodesHasMore, setNodesHasMore] = useState(false);
   const [nodesLoading, setNodesLoading] = useState(false);
+  const [fallbackWarning, setFallbackWarning] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>();
 
   // ── Queries ──────────────────────────────────────────────────
@@ -396,7 +408,17 @@ export default function RepoDetailPage() {
         const params: Record<string, string | number> = { page, limit: 50 };
         if (search) params.search = search;
         if (filter) params.node_type = filter;
-        const res: PaginatedNodes = await getNodes(repoId, params);
+        let res: PaginatedNodes = await getNodes(repoId, params);
+        
+        if (res.nodes.length === 0 && filter !== null) {
+          setFallbackWarning(true);
+          delete params.node_type;
+          res = await getNodes(repoId, params);
+          setFuncFilter(null);
+        } else {
+          setFallbackWarning(false);
+        }
+
         setAllNodes((prev) => (append ? [...prev, ...res.nodes] : res.nodes));
         setNodesTotal(res.total);
         setNodesHasMore(res.has_more);
@@ -479,7 +501,7 @@ export default function RepoDetailPage() {
   if (repoLoading) {
     return (
       <div className="min-h-screen bg-[#0f0f0f] flex items-center justify-center">
-        <LoadingSpinner size="lg" text="Loading repository..." />
+        <LoadingSpinner size="large" text="Loading repository..." />
       </div>
     );
   }
@@ -558,7 +580,7 @@ export default function RepoDetailPage() {
               <p className="text-xs text-gray-500">Analysis in progress...</p>
             </div>
           ) : treeLoading ? (
-            <LoadingSpinner size="sm" />
+            <LoadingSpinner size="small" />
           ) : treeError ? (
             <p className="text-xs text-red-400 p-3">{(treeError as Error).message}</p>
           ) : tree && tree.length > 0 ? (
@@ -626,7 +648,25 @@ export default function RepoDetailPage() {
                     </span>
                   </div>
                 </div>
-                <div className="flex items-center gap-2 shrink-0">
+                <div className="flex items-center gap-2 shrink-0 flex-wrap">
+                  {repo.analysis_status === "completed" && (
+                    <>
+                      <Link
+                        to={`/repos/${repoId}/project-brain`}
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-gradient-to-r from-purple-600/20 to-blue-600/20 text-blue-400 border border-blue-700/30 hover:bg-blue-900/30 rounded-lg transition-colors"
+                      >
+                        <Zap className="w-3.5 h-3.5" />
+                        Project Brain
+                      </Link>
+                      <Link
+                        to={`/repos/${repoId}/impact`}
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-sm border border-purple-600 text-purple-400 hover:bg-purple-900/30 rounded-lg transition-colors"
+                      >
+                        <Zap className="w-3.5 h-3.5" />
+                        Impact Radar
+                      </Link>
+                    </>
+                  )}
                   <button
                     onClick={handleReanalyze}
                     className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-lg transition-colors"
@@ -744,6 +784,13 @@ export default function RepoDetailPage() {
                 ))}
               </div>
 
+              {/* Fallback warning */}
+              {fallbackWarning && (
+                <div className="mb-4 p-3 bg-yellow-900/30 border border-yellow-700/50 rounded-lg text-sm text-yellow-500">
+                  No results found for the selected filter. Showing all nodes instead.
+                </div>
+              )}
+
               {/* Results */}
               {nodesLoading && allNodes.length === 0 ? (
                 <LoadingSpinner text="Loading functions..." />
@@ -752,15 +799,29 @@ export default function RepoDetailPage() {
               ) : (
                 <>
                   <p className="text-xs text-gray-600 mb-3">{nodesTotal} results</p>
-                  <div className="space-y-2">
-                    {allNodes.map((node) => (
-                      <NodeCard
-                        key={node.id}
-                        node={node}
-                        repoId={repoId}
-                        onUpdate={updateNodeSummary}
-                        onClick={() => setSelectedNodeId(node.id)}
-                      />
+                  <div className="space-y-6">
+                    {Object.entries(
+                      allNodes.reduce((acc, node) => {
+                        const path = node.full_path ? node.full_path.split(':')[0] : "unknown";
+                        if (!acc[path]) acc[path] = [];
+                        acc[path].push(node);
+                        return acc;
+                      }, {} as Record<string, NodeResponse[]>)
+                    ).map(([path, nodesInFile]) => (
+                      <div key={path} className="space-y-2">
+                        <h3 className="text-sm font-semibold text-gray-400 mb-2 border-b border-gray-800 pb-1 truncate">
+                          {path}
+                        </h3>
+                        {nodesInFile.map((node) => (
+                          <NodeCard
+                            key={node.id}
+                            node={node}
+                            repoId={repoId}
+                            onUpdate={updateNodeSummary}
+                            onClick={() => setSelectedNodeId(node.id)}
+                          />
+                        ))}
+                      </div>
                     ))}
                   </div>
                   {nodesHasMore && (

@@ -106,9 +106,73 @@ async def run_repo_analysis(repo_id: UUID, user_id: UUID) -> None:
             repo.analysis_status = "completed"
             repo.last_analyzed_at = datetime.now(timezone.utc)
             await db.commit()
+
+            try:
+                from app.services.alias_seeder import (
+                    index_node_embeddings,
+                    link_workflow_aliases_to_nodes,
+                    seed_aliases_for_repo,
+                )
+
+                await seed_aliases_for_repo(repo.id, db)
+                await link_workflow_aliases_to_nodes(repo.id, db)
+                await index_node_embeddings(repo.id, db)
+                await db.commit()
+            except Exception:
+                await db.rollback()
+                logger.warning(
+                    "Alias/embedding seed skipped for %s",
+                    repo_id,
+                    exc_info=True,
+                )
+
+            try:
+                from app.services.workflow_discovery_service import (
+                    WorkflowDiscoveryService,
+                )
+
+                wf_count = await WorkflowDiscoveryService().discover_for_repo(
+                    repo.id, db
+                )
+                await db.commit()
+                logger.info(
+                    "Workflow discovery for %s: %d workflows",
+                    repo.full_name,
+                    wf_count,
+                )
+            except Exception:
+                await db.rollback()
+                logger.warning(
+                    "Workflow discovery skipped for %s",
+                    repo_id,
+                    exc_info=True,
+                )
+
+            try:
+                from app.services.critical_path_service import CriticalPathService
+                from app.services.impact_precompute_service import ImpactPrecomputeService
+
+                await CriticalPathService().seed_for_repo(repo.id, db)
+                metric_count = await ImpactPrecomputeService().recompute_for_repo(
+                    repo.id, db
+                )
+                await db.commit()
+                logger.info(
+                    "Impact precompute for %s: %d node metrics",
+                    repo.full_name,
+                    metric_count,
+                )
+            except Exception:
+                await db.rollback()
+                logger.warning(
+                    "Impact precompute skipped for %s",
+                    repo_id,
+                    exc_info=True,
+                )
+
             logger.info(
                 "Analysis completed for %s: %d files, %d functions",
-                repo.full_name,
+                repo_id,
                 stats["total_files"],
                 stats["total_functions"],
             )
