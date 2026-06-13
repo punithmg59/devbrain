@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -67,6 +67,7 @@ const FileTreeItem = ({
   onSelectFile,
   selectedFileId,
   searchFilter,
+  collapsed,
 }: {
   node: FileTreeNode;
   expanded: Set<string>;
@@ -74,6 +75,7 @@ const FileTreeItem = ({
   onSelectFile: (id: string) => void;
   selectedFileId: string | null;
   searchFilter: string;
+  collapsed?: boolean;
 }) => {
   const isExpanded = expanded.has(node.path);
   const isSelected = node.type === "file" && node.id === selectedFileId;
@@ -103,6 +105,7 @@ const FileTreeItem = ({
           onClick={() => onToggle(node.path)}
           className="w-full flex items-center gap-1.5 py-1 px-2 text-left hover:bg-gray-800/50 rounded transition-colors group"
           style={{ paddingLeft: `${indent + 8}px` }}
+          title={node.name}
         >
           {isExpanded ? (
             <ChevronDown className="w-3.5 h-3.5 text-gray-600 shrink-0" />
@@ -114,9 +117,9 @@ const FileTreeItem = ({
           ) : (
             <Folder className="w-4 h-4 text-yellow-500/50 shrink-0" />
           )}
-          <span className="text-sm text-gray-300 truncate">{node.name}</span>
+          <span className={`text-sm text-gray-300 truncate ${collapsed ? "sr-only" : ""}`}>{node.name}</span>
           {node.file_count != null && (
-            <span className="ml-auto text-[10px] text-gray-600 shrink-0">
+            <span className={`ml-auto text-[10px] text-gray-600 shrink-0 ${collapsed ? "sr-only" : ""}`}>
               {node.file_count}
             </span>
           )}
@@ -147,9 +150,10 @@ const FileTreeItem = ({
           : "hover:bg-gray-800/50 border border-transparent"
       }`}
       style={{ paddingLeft: `${indent + 24}px` }}
+      title={node.name}
     >
       <FileCode2 className={`w-3.5 h-3.5 shrink-0 ${extColor(node.extension)}`} />
-      <span className="text-sm text-gray-300 truncate">{node.name}</span>
+      <span className={`text-sm text-gray-300 truncate ${collapsed ? "sr-only" : ""}`}>{node.name}</span>
       {node.line_count != null && (
         <span className="ml-auto text-[10px] text-gray-600 shrink-0">
           {node.line_count}
@@ -158,6 +162,9 @@ const FileTreeItem = ({
     </button>
   );
 };
+
+// Memoize FileTreeItem to avoid re-renders during resize
+const MemoFileTreeItem = (React.memo(FileTreeItem) as unknown) as typeof FileTreeItem;
 
 // ── NodeCard ────────────────────────────────────────────────────
 
@@ -520,6 +527,109 @@ export default function RepoDetailPage() {
   if (!repo) return null;
 
   const isAnalysisIncomplete = repo.analysis_status !== "completed";
+  // Sidebar sizing / collapse / drawer state
+  const MIN_SIDEBAR = 260;
+  const MAX_SIDEBAR = 700;
+  const DEFAULT_SIDEBAR = 320;
+  const COLLAPSED_WIDTH = 64;
+
+  const [sidebarWidth, setSidebarWidth] = useState<number>(DEFAULT_SIDEBAR);
+  const [collapsed, setCollapsed] = useState<boolean>(false);
+  const [sidebarOpen, setSidebarOpen] = useState<boolean>(true); // used as drawer open on mobile
+  const [isDragging, setIsDragging] = useState(false);
+
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const onResize = () => setIsMobile(window.innerWidth < 768);
+    onResize();
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+
+  const asideRef = useRef<HTMLDivElement | null>(null);
+  const startXRef = useRef<number>(0);
+  const startWidthRef = useRef<number>(DEFAULT_SIDEBAR);
+  const rafRef = useRef<number | null>(null);
+
+  // Load persisted settings
+  useEffect(() => {
+    try {
+      const w = window.localStorage.getItem("devbrain-sidebar-width");
+      const c = window.localStorage.getItem("devbrain-sidebar-collapsed");
+      if (w) setSidebarWidth(Math.min(MAX_SIDEBAR, Math.max(MIN_SIDEBAR, Number(w))));
+      if (c) setCollapsed(c === "1");
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  // Persist width and collapsed
+  useEffect(() => {
+    try {
+      window.localStorage.setItem("devbrain-sidebar-width", String(sidebarWidth));
+    } catch {}
+  }, [sidebarWidth]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem("devbrain-sidebar-collapsed", collapsed ? "1" : "0");
+    } catch {}
+  }, [collapsed]);
+
+  // Pointer handlers for resizer
+  const onResizerPointerDown = useCallback((e: React.PointerEvent) => {
+    e.preventDefault();
+    (e.target as Element).setPointerCapture(e.pointerId);
+    startXRef.current = e.clientX;
+    startWidthRef.current = sidebarWidth;
+    setIsDragging(true);
+
+    const onPointerMove = (ev: PointerEvent) => {
+      const dx = ev.clientX - startXRef.current;
+      const newWidth = Math.min(MAX_SIDEBAR, Math.max(MIN_SIDEBAR, startWidthRef.current + dx));
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      rafRef.current = requestAnimationFrame(() => setSidebarWidth(newWidth));
+    };
+
+    const onPointerUp = (ev: PointerEvent) => {
+      setIsDragging(false);
+      try {
+        (e.target as Element).releasePointerCapture(e.pointerId);
+      } catch {}
+      window.removeEventListener("pointermove", onPointerMove);
+      window.removeEventListener("pointerup", onPointerUp);
+    };
+
+    window.addEventListener("pointermove", onPointerMove);
+    window.addEventListener("pointerup", onPointerUp);
+  }, [sidebarWidth]);
+
+  // Collapse / expand
+  const toggleCollapse = useCallback(() => {
+    setCollapsed((c) => {
+      const next = !c;
+      if (!next) {
+        // expanding: ensure width within limits
+        setSidebarWidth((w) => Math.min(MAX_SIDEBAR, Math.max(MIN_SIDEBAR, w || DEFAULT_SIDEBAR)));
+      }
+      return next;
+    });
+  }, []);
+
+  // Keyboard shortcuts Alt+[ collapse, Alt+] expand
+  useEffect(() => {
+    const onKey = (ev: KeyboardEvent) => {
+      if (!ev.altKey) return;
+      if (ev.key === "[") {
+        setCollapsed(true);
+      } else if (ev.key === "]") {
+        setCollapsed(false);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   // ── Tabs config ──────────────────────────────────────────────
 
@@ -545,17 +655,35 @@ export default function RepoDetailPage() {
   return (
     <div className="min-h-screen bg-[#0f0f0f] text-white flex">
       {/* ── Left panel: File tree sidebar ───────────────────── */}
-      <aside className="w-[280px] shrink-0 border-r border-gray-800 flex flex-col h-screen sticky top-0 bg-[#0b0b0b]">
-        {/* Repo name + back */}
-        <div className="px-4 py-3 border-b border-gray-800">
+      {/* Sidebar */}
+      <aside
+        ref={asideRef}
+        className={`relative border-r border-gray-800 flex flex-col h-screen sticky top-0 bg-[#0b0b0b] ${isMobile ? "fixed z-30 left-0 top-0" : ""}`}
+        style={{
+          width: collapsed ? `${COLLAPSED_WIDTH}px` : `${sidebarWidth}px`,
+          transition: isDragging ? "none" : "width .18s ease",
+          transform: isMobile ? (sidebarOpen ? "translateX(0)" : "translateX(-110%)") : undefined,
+        }}
+        aria-expanded={!collapsed}
+      >
+        {/* Collapse button near header */}
+        <div className="px-4 py-3 border-b border-gray-800 flex items-center gap-2">
           <button
             onClick={() => navigate("/dashboard")}
-            className="flex items-center gap-2 text-sm text-gray-400 hover:text-gray-200 transition-colors mb-2"
+            className="flex items-center gap-2 text-sm text-gray-400 hover:text-gray-200 transition-colors"
+            aria-label="Back to dashboard"
           >
             <ArrowLeft className="w-4 h-4" />
-            Dashboard
           </button>
-          <h2 className="text-sm font-semibold text-gray-200 truncate">{repo.full_name}</h2>
+          <h2 className="text-sm font-semibold text-gray-200 truncate flex-1">{repo.full_name}</h2>
+          <button
+            onClick={toggleCollapse}
+            className="w-8 h-8 bg-gray-900 border border-gray-800 rounded-full flex items-center justify-center text-gray-300 hover:bg-gray-800 transition-transform"
+            aria-pressed={collapsed}
+            aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          >
+            <ChevronRight className={`w-4 h-4 transform ${collapsed ? "rotate-180" : ""}`} />
+          </button>
         </div>
 
         {/* Search */}
@@ -572,7 +700,7 @@ export default function RepoDetailPage() {
           </div>
         </div>
 
-        {/* Tree */}
+        {/* Tree content (memoized) */}
         <div className="flex-1 overflow-y-auto px-1 py-1">
           {isAnalysisIncomplete ? (
             <div className="p-4 text-center">
@@ -585,7 +713,7 @@ export default function RepoDetailPage() {
             <p className="text-xs text-red-400 p-3">{(treeError as Error).message}</p>
           ) : tree && tree.length > 0 ? (
             tree.map((node) => (
-              <FileTreeItem
+              <MemoFileTreeItem
                 key={node.id}
                 node={node}
                 expanded={expandedFolders}
@@ -593,19 +721,59 @@ export default function RepoDetailPage() {
                 onSelectFile={setSelectedFileId}
                 selectedFileId={selectedFileId}
                 searchFilter={treeSearch}
+                collapsed={collapsed}
               />
             ))
           ) : (
             <p className="text-xs text-gray-600 p-3">No files found</p>
           )}
         </div>
+
       </aside>
+
+      {/* Resizer handle (only show on non-mobile) */}
+      {!isMobile && (
+        <div
+          role="separator"
+          tabIndex={0}
+          onPointerDown={onResizerPointerDown}
+          onKeyDown={(e) => {
+            if (e.key === "ArrowLeft") setSidebarWidth((w) => Math.max(MIN_SIDEBAR, w - 20));
+            if (e.key === "ArrowRight") setSidebarWidth((w) => Math.min(MAX_SIDEBAR, w + 20));
+            if (e.key === "Escape") setIsDragging(false);
+          }}
+          className={`w-2 cursor-col-resize select-none bg-transparent hover:bg-purple-600/20 active:bg-purple-600/30 transition-colors ${isDragging ? "bg-purple-600/40" : ""}`}
+          style={{
+            height: "100vh",
+          }}
+          aria-orientation="vertical"
+          aria-label="Resize sidebar"
+        />
+      )}
+      {/* Mobile overlay (drawer) */}
+      {isMobile && sidebarOpen && (
+        <div
+          className="fixed inset-0 bg-black/40 z-20"
+          onClick={() => setSidebarOpen(false)}
+          aria-hidden
+        />
+      )}
 
       {/* ── Right panel: Main content ───────────────────────── */}
       <main className="flex-1 min-w-0 h-screen overflow-y-auto">
         {/* Tabs */}
         <div className="sticky top-0 z-10 bg-[#0f0f0f] border-b border-gray-800">
-          <div className="flex">
+          <div className="flex items-center">
+            {isMobile && (
+              <button
+                onClick={() => setSidebarOpen(true)}
+                className="p-3 mr-2 text-gray-300 hover:text-gray-100"
+                aria-label="Open sidebar"
+              >
+                <LayoutList className="w-5 h-5" />
+              </button>
+            )}
+            <div className="flex">
             {tabs.map((tab) => (
               <button
                 key={tab.key}

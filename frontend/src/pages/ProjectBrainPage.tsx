@@ -108,8 +108,8 @@ export default function ProjectBrainPage() {
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id as TabType)}
                 className={`flex items-center gap-2 px-6 py-3 text-sm font-medium border-b-2 transition-all ${active
-                    ? "border-purple-500 text-purple-400 bg-purple-500/5"
-                    : "border-transparent text-slate-500 hover:text-slate-300 hover:bg-white/5"
+                  ? "border-purple-500 text-purple-400 bg-purple-500/5"
+                  : "border-transparent text-slate-500 hover:text-slate-300 hover:bg-white/5"
                   }`}
               >
                 <Icon className="w-4 h-4" />
@@ -304,8 +304,8 @@ export default function ProjectBrainPage() {
                     <div className="space-y-1">
                       <div className="flex items-center gap-2">
                         <span className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded-full border ${violation.severity === 'Critical' ? 'bg-red-500/10 text-red-400 border-red-500/20' :
-                            violation.severity === 'High' ? 'bg-orange-500/10 text-orange-400 border-orange-500/20' :
-                              'bg-yellow-500/10 text-yellow-400 border-yellow-500/20'
+                          violation.severity === 'High' ? 'bg-orange-500/10 text-orange-400 border-orange-500/20' :
+                            'bg-yellow-500/10 text-yellow-400 border-yellow-500/20'
                           }`}>
                           {violation.severity}
                         </span>
