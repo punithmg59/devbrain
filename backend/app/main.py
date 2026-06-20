@@ -9,7 +9,17 @@ from sqlalchemy.exc import ProgrammingError
 
 from app.config import get_settings
 from app.database import init_db, test_connection, validate_schema
-from app.routers import analysis, auth, impact, repo_detail, repos, workflows
+from app.routers import (
+    analysis,
+    architecture,
+    auth,
+    flows,
+    impact,
+    repo_detail,
+    repos,
+    workflows,
+    intelligence,
+)
 from app.utils.errors import DevBrainException
 from app.utils.redis_client import close_redis, init_redis
 
@@ -41,6 +51,9 @@ app.include_router(analysis.router, prefix="", tags=["analysis"])
 app.include_router(repo_detail.router, prefix="", tags=["repo-detail"])
 app.include_router(impact.router, prefix="", tags=["impact"])
 app.include_router(workflows.router, prefix="", tags=["workflows"])
+app.include_router(architecture.router, prefix="", tags=["architecture"])
+app.include_router(intelligence.router, prefix="", tags=["intelligence"])
+app.include_router(flows.router, prefix="", tags=["flows"])
 
 
 # ── Exception handlers ─────────────────────────────────────────

@@ -28,6 +28,7 @@ from app.schemas.resolver import (
     ResolveRequest,
     ResolveResponse,
 )
+from app.services.analysis import ANALYZED_STATUSES
 from app.services.impact_service import ImpactService
 from app.services.resolver_service import SmartResolver
 from app.utils.auth import get_current_user
@@ -92,7 +93,7 @@ async def resolve_query(
 ) -> ResolveResponse:
     try:
         repo = await _get_user_repo(repo_id, current_user, db)
-        if repo.analysis_status != "completed":
+        if repo.analysis_status not in ANALYZED_STATUSES:
             raise HTTPException(
                 status_code=400,
                 detail="Repository analysis not complete",
@@ -161,7 +162,7 @@ async def analyze_impact(
     try:
         repo = await _get_user_repo(repo_id, current_user, db)
 
-        if repo.analysis_status != "completed":
+        if repo.analysis_status not in ANALYZED_STATUSES:
             raise HTTPException(
                 status_code=400,
                 detail=(
@@ -225,7 +226,7 @@ async def compare_impact(
     """Compare blast radius of two change targets (premium)."""
     try:
         repo = await _get_user_repo(repo_id, current_user, db)
-        if repo.analysis_status != "completed":
+        if repo.analysis_status not in ANALYZED_STATUSES:
             raise HTTPException(status_code=400, detail="Repository analysis not complete")
 
         a = await impact_service.analyze(
@@ -274,7 +275,7 @@ async def seed_resolver_aliases(
     """Rebuild aliases + embeddings for an already-analyzed repo."""
     try:
         repo = await _get_user_repo(repo_id, current_user, db)
-        if repo.analysis_status != "completed":
+        if repo.analysis_status not in ANALYZED_STATUSES:
             raise HTTPException(status_code=400, detail="Repository analysis not complete")
         from app.services.alias_seeder import (
             index_node_embeddings,
@@ -364,7 +365,7 @@ async def blast_radius_report(
     db: AsyncSession = Depends(get_db),
 ) -> BlastRadiusReport:
     repo = await _get_user_repo(repo_id, current_user, db)
-    if repo.analysis_status != "completed":
+    if repo.analysis_status not in ANALYZED_STATUSES:
         raise HTTPException(status_code=400, detail="Repository analysis not complete")
     q = request.query.strip()
     if not q:
@@ -455,7 +456,7 @@ async def recompute_impact_metrics(
     from app.services.workflow_discovery_service import WorkflowDiscoveryService
 
     repo = await _get_user_repo(repo_id, current_user, db)
-    if repo.analysis_status != "completed":
+    if repo.analysis_status not in ANALYZED_STATUSES:
         raise HTTPException(status_code=400, detail="Repository analysis not complete")
     workflows = await WorkflowDiscoveryService().discover_for_repo(repo.id, db)
     paths = await CriticalPathService().seed_for_repo(repo.id, db)

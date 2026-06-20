@@ -1,9 +1,12 @@
 """CPU/file-heavy analysis work (runs in a thread pool)."""
 
+import logging
+import os
+import time
 from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -13,9 +16,32 @@ from app.services.language_utils import (
     detect_language,
     folder_depth,
     is_analyzable,
+    is_binary_file,
     iter_repo_files,
     normalize_folder_path,
 )
+
+
+def _parse_worker(rel_path: str, content: str) -> tuple[str, list[dict] | None, dict | None]:
+    """Parse one file in a worker thread.
+
+    Returns (rel_path, parsed_nodes, error). Exactly one of parsed_nodes / error
+    is non-None. NEVER raises — a single bad file must not stop the pool (Phase 1
+    fault tolerance, preserved under parallel execution).
+    """
+    try:
+        return rel_path, parse_file(content, rel_path), None
+    except Exception as exc:  # defense-in-depth; parse_file is already non-raising
+        return rel_path, None, {
+            "file_path": rel_path,
+            "error_type": type(exc).__name__,
+            "message": str(exc)[:500],
+        }
+
+
+def _parse_worker_count() -> int:
+    """Bounded worker count: min(8, CPU cores)."""
+    return min(8, os.cpu_count() or 1)
 
 
 @dataclass
@@ -27,6 +53,13 @@ class AnalysisPayload:
     total_files: int = 0
     total_functions: int = 0
     total_lines: int = 0
+    # Files that could not be parsed. Each entry: {file_path, error_type, message}.
+    # A non-empty list means the repo finished as "completed_with_warnings".
+    failed_files: list[dict] = field(default_factory=list)
+    # Binary files detected and skipped (stored as metadata only, never decoded).
+    binary_files_skipped: int = 0
+    # Source files actually sent through the parser.
+    source_files_analyzed: int = 0
 
 
 def collect_analysis_payload(clone_path: str) -> AnalysisPayload:
@@ -39,20 +72,46 @@ def collect_analysis_payload(clone_path: str) -> AnalysisPayload:
 
     for rel_path, full_path, size in iter_repo_files(clone_path):
         all_paths.add(rel_path)
-        try:
-            content = full_path.read_text(encoding="utf-8", errors="replace")
-        except OSError:
-            continue
-
-        file_contents[rel_path] = content
-        line_count = content.count("\n") + (1 if content else 0)
-        payload.total_lines += line_count
 
         folder = normalize_folder_path(str(Path(rel_path).parent))
         if folder == ".":
             folder = ""
-
         folder_file_counts[folder] += 1
+
+        # Read raw bytes first so we can classify before any decode attempt.
+        try:
+            raw = full_path.read_bytes()
+        except OSError:
+            continue
+
+        # ── Binary guard ──────────────────────────────────────────────
+        # Binary files (by extension OR containing a NUL byte) must never be
+        # decoded, previewed, or parsed. NUL (0x00) is valid UTF-8 but Postgres
+        # rejects it in text columns — previously this crashed _persist_analysis
+        # on repo_files.content_preview (e.g. house_model.pkl).
+        if is_binary_file(rel_path, raw):
+            payload.binary_files_skipped += 1
+            logger.info("Skipping binary file: %s\nReason: binary file", rel_path)
+            payload.files.append(
+                {
+                    "file_path": rel_path,
+                    "file_name": Path(rel_path).name,
+                    "extension": Path(rel_path).suffix.lower() or None,
+                    "language": "binary",
+                    "folder_path": folder,
+                    "depth": folder_depth(folder),
+                    "size_bytes": size,
+                    "line_count": 0,
+                    "content_preview": None,
+                    "importance_score": _importance_score(rel_path),
+                }
+            )
+            continue
+
+        content = raw.decode("utf-8", errors="replace")
+        file_contents[rel_path] = content
+        line_count = content.count("\n") + (1 if content else 0)
+        payload.total_lines += line_count
 
         payload.files.append(
             {
@@ -69,18 +128,69 @@ def collect_analysis_payload(clone_path: str) -> AnalysisPayload:
             }
         )
 
-    for file_data in payload.files:
-        rel_path = file_data["file_path"]
-        if not is_analyzable(rel_path):
-            continue
-        content = file_contents.get(rel_path, "")
-        parsed = parse_file(content, rel_path)
-        parsed_by_file[rel_path] = parsed
+    # ── Parse analyzable files in parallel (Phase 2) ──────────────────
+    # Parsing is the heaviest per-file step. Fan it out across a bounded
+    # ThreadPoolExecutor, then merge results back in the ORIGINAL file order so
+    # node ordering — and therefore edge resolution downstream — stays
+    # deterministic and identical to the previous sequential implementation.
+    analyzable_files = [
+        fd
+        for fd in payload.files
+        if is_analyzable(fd["file_path"]) and fd["language"] != "binary"
+    ]
+    payload.source_files_analyzed = len(analyzable_files)
 
+    _parse_start = time.perf_counter()
+    parse_results: dict[str, tuple[list[dict] | None, dict | None]] = {}
+    max_workers = _parse_worker_count() if analyzable_files else 0
+    if analyzable_files:
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = [
+                executor.submit(
+                    _parse_worker,
+                    fd["file_path"],
+                    file_contents.get(fd["file_path"], ""),
+                )
+                for fd in analyzable_files
+            ]
+            for fut in futures:
+                rel_path, parsed, err = fut.result()  # _parse_worker never raises
+                parse_results[rel_path] = (parsed, err)
+
+    # Merge results deterministically, preserving original file order. Per-file
+    # fault isolation (Phase 1) is preserved: a failed file is recorded and skipped.
+    for file_data in analyzable_files:
+        rel_path = file_data["file_path"]
+        parsed, err = parse_results.get(rel_path, (None, None))
+        if err is not None:
+            logger.warning("Skipping file due to parse failure: %s (%s)", rel_path, err["message"])
+            parsed_by_file.pop(rel_path, None)
+            payload.failed_files.append(err)
+            continue
+        parsed = parsed or []
+        parsed_by_file[rel_path] = parsed
         for p in parsed:
             if p["node_type"] in ("function", "method", "api_route"):
                 folder_function_counts[file_data["folder_path"]] += 1
             payload.nodes.append({**p, "file_path": rel_path})
+
+    # ── Benchmark logging (Phase 2) ───────────────────────────────────
+    _parse_elapsed = time.perf_counter() - _parse_start
+    _files_processed = len(analyzable_files)
+    _functions_found = sum(
+        1 for n in payload.nodes if n["node_type"] in ("function", "method", "api_route")
+    )
+    _fps = (_files_processed / _parse_elapsed) if _parse_elapsed > 0 else 0.0
+    logger.info(
+        "Parse benchmark | files_processed=%d functions_found=%d "
+        "time_taken=%.3fs files_per_sec=%.1f workers=%d skipped=%d",
+        _files_processed,
+        _functions_found,
+        _parse_elapsed,
+        _fps,
+        max_workers,
+        len(payload.failed_files),
+    )
 
     all_folders: set[str] = set(folder_file_counts.keys())
     for folder in list(all_folders):
@@ -315,20 +425,27 @@ def collect_analysis_payload(clone_path: str) -> AnalysisPayload:
     )
 
     # ── Add File nodes + contains edges ───────────────────────
+    _existing_full_paths = {n["full_path"] for n in payload.nodes}
     for file_data in payload.files:
-        payload.nodes.append({
-            "node_type": "file",
-            "name": file_data["file_name"],
-            "full_path": file_data["file_path"],
-            "start_line": 1,
-            "end_line": file_data["line_count"],
-            "file_path": file_data["file_path"],
-            "raw_code": None, "signature": None,
-            "calls": [], "imports": [],
-            "is_exported": True, "is_async": False,
-            "http_method": None, "route_path": None,
-        })
+        # Never create nodes/edges from binary files (stored as metadata only).
+        if file_data["language"] == "binary":
+            continue
         fp = file_data["file_path"]
+        # Only add file node if its full_path isn't already taken by a parsed node
+        if fp not in _existing_full_paths:
+            payload.nodes.append({
+                "node_type": "file",
+                "name": file_data["file_name"],
+                "full_path": fp,
+                "start_line": 1,
+                "end_line": file_data["line_count"],
+                "file_path": fp,
+                "raw_code": None, "signature": None,
+                "calls": [], "imports": [],
+                "is_exported": True, "is_async": False,
+                "http_method": None, "route_path": None,
+            })
+            _existing_full_paths.add(fp)
         for p in parsed_by_file.get(fp, []):
             if p["node_type"] in ("function", "class", "api_route", "method"):
                 _add_edge(fp, p["full_path"], "contains")
@@ -359,6 +476,22 @@ def collect_analysis_payload(clone_path: str) -> AnalysisPayload:
             display_name = nname.replace("_auth_", "").replace("_di_", "")
             payload.nodes.append(_make_generic("function", display_name, nname))
 
+    # ── Deduplicate nodes by full_path ─────────────────────────
+    # The parser (regex for JS/TS, AST for Python) can produce multiple nodes
+    # with the same full_path. The DB has a unique constraint on
+    # (repo_id, full_path), so we must deduplicate here. Keep the LAST
+    # occurrence so that more-specific nodes (e.g. parsed class nodes) win
+    # over generic file nodes added above.
+    seen_fp: dict[str, int] = {}
+    for idx, n in enumerate(payload.nodes):
+        seen_fp[n["full_path"]] = idx
+    if len(seen_fp) < len(payload.nodes):
+        dup_count = len(payload.nodes) - len(seen_fp)
+        logger.warning(
+            "Deduplicated %d node(s) with duplicate full_path", dup_count
+        )
+        payload.nodes = [payload.nodes[i] for i in sorted(seen_fp.values())]
+
     # ── Log results ───────────────────────────────────────────
     node_type_counts = defaultdict(int)
     for n in payload.nodes:
@@ -369,6 +502,17 @@ def collect_analysis_payload(clone_path: str) -> AnalysisPayload:
 
     logger.info(f"Analysis collection complete for {clone_path}")
     logger.info(f"Total files: {payload.total_files}")
+    logger.info(
+        "Source files analyzed: %d | Binary files skipped: %d",
+        payload.source_files_analyzed,
+        payload.binary_files_skipped,
+    )
+    if payload.failed_files:
+        logger.warning(
+            "Skipped %d file(s) due to parse failures: %s",
+            len(payload.failed_files),
+            [f["file_path"] for f in payload.failed_files][:20],
+        )
     logger.info(f"Total nodes extracted: {len(payload.nodes)}")
     logger.info(f"Node type breakdown: {dict(node_type_counts)}")
     logger.info(f"Total edges extracted: {len(payload.edges)}")

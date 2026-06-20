@@ -14,6 +14,7 @@ import {
   Layers,
   LayoutList,
   Loader2,
+  Network,
   RefreshCw,
   Search,
   Sparkles,
@@ -37,6 +38,7 @@ import type {
   ApiRoutes,
   PaginatedNodes,
 } from "../types/repo";
+import { isAnalyzed } from "../types/repo";
 
 import FileDetailPanel from "../components/FileDetailPanel";
 import NodeDetailPanel from "../components/NodeDetailPanel";
@@ -381,7 +383,7 @@ export default function RepoDetailPage() {
   } = useQuery({
     queryKey: ["file-tree", repoId],
     queryFn: () => getFileTree(repoId!),
-    enabled: !!repoId && repo?.analysis_status === "completed",
+    enabled: !!repoId && isAnalyzed(repo?.analysis_status),
     staleTime: 5 * 60 * 1000,
   });
 
@@ -391,7 +393,7 @@ export default function RepoDetailPage() {
   } = useQuery<RepoStats>({
     queryKey: ["repo-stats", repoId],
     queryFn: () => getRepoStats(repoId!),
-    enabled: !!repoId && activeTab === "stats" && repo?.analysis_status === "completed",
+    enabled: !!repoId && activeTab === "stats" && isAnalyzed(repo?.analysis_status),
     staleTime: 5 * 60 * 1000,
   });
 
@@ -401,7 +403,7 @@ export default function RepoDetailPage() {
   } = useQuery<ApiRoutes>({
     queryKey: ["api-routes", repoId],
     queryFn: () => getApiRoutes(repoId!),
-    enabled: !!repoId && activeTab === "routes" && repo?.analysis_status === "completed",
+    enabled: !!repoId && activeTab === "routes" && isAnalyzed(repo?.analysis_status),
     staleTime: 5 * 60 * 1000,
   });
 
@@ -440,7 +442,7 @@ export default function RepoDetailPage() {
 
   // Initial + filter change
   useEffect(() => {
-    if (activeTab !== "functions" || !repoId || repo?.analysis_status !== "completed") return;
+    if (activeTab !== "functions" || !repoId || !isAnalyzed(repo?.analysis_status)) return;
     setFuncPage(1);
     loadNodes(funcSearch, funcFilter, 1, false);
   }, [activeTab, repoId, funcFilter, repo?.analysis_status]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -501,32 +503,6 @@ export default function RepoDetailPage() {
     }
   };
 
-  // ── Render guards ────────────────────────────────────────────
-
-  if (!repoId) return null;
-
-  if (repoLoading) {
-    return (
-      <div className="min-h-screen bg-[#0f0f0f] flex items-center justify-center">
-        <LoadingSpinner size="large" text="Loading repository..." />
-      </div>
-    );
-  }
-
-  if (repoError) {
-    return (
-      <div className="min-h-screen bg-[#0f0f0f] flex items-center justify-center">
-        <ErrorState
-          message={(repoError as Error).message}
-          retry={() => refetchRepo()}
-        />
-      </div>
-    );
-  }
-
-  if (!repo) return null;
-
-  const isAnalysisIncomplete = repo.analysis_status !== "completed";
   // Sidebar sizing / collapse / drawer state
   const MIN_SIDEBAR = 260;
   const MAX_SIDEBAR = 700;
@@ -595,7 +571,7 @@ export default function RepoDetailPage() {
     const onPointerUp = (ev: PointerEvent) => {
       setIsDragging(false);
       try {
-        (e.target as Element).releasePointerCapture(e.pointerId);
+        (ev.target as Element).releasePointerCapture(ev.pointerId);
       } catch {}
       window.removeEventListener("pointermove", onPointerMove);
       window.removeEventListener("pointerup", onPointerUp);
@@ -651,6 +627,33 @@ export default function RepoDetailPage() {
     }
     return groups;
   }, [apiRoutesData]);
+
+  // ── Render guards ────────────────────────────────────────────
+
+  if (!repoId) return null;
+
+  if (repoLoading) {
+    return (
+      <div className="min-h-screen bg-[#0f0f0f] flex items-center justify-center">
+        <LoadingSpinner size="large" text="Loading repository..." />
+      </div>
+    );
+  }
+
+  if (repoError) {
+    return (
+      <div className="min-h-screen bg-[#0f0f0f] flex items-center justify-center">
+        <ErrorState
+          message={(repoError as Error).message}
+          retry={() => refetchRepo()}
+        />
+      </div>
+    );
+  }
+
+  if (!repo) return null;
+
+  const isAnalysisIncomplete = !isAnalyzed(repo.analysis_status);
 
   return (
     <div className="min-h-screen bg-[#0f0f0f] text-white flex">
@@ -790,6 +793,7 @@ export default function RepoDetailPage() {
             ))}
           </div>
         </div>
+      </div>
 
         <div className="p-6 max-w-5xl">
           {/* ── Tab: Overview ─────────────────────────────────── */}
@@ -817,7 +821,7 @@ export default function RepoDetailPage() {
                   </div>
                 </div>
                 <div className="flex items-center gap-2 shrink-0 flex-wrap">
-                  {repo.analysis_status === "completed" && (
+                  {isAnalyzed(repo.analysis_status) && (
                     <>
                       <Link
                         to={`/repos/${repoId}/project-brain`}
@@ -832,6 +836,13 @@ export default function RepoDetailPage() {
                       >
                         <Zap className="w-3.5 h-3.5" />
                         Impact Radar
+                      </Link>
+                      <Link
+                        to={`/repos/${repoId}/architecture`}
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-sm border border-blue-600 text-blue-400 hover:bg-blue-900/30 rounded-lg transition-colors"
+                      >
+                        <Network className="w-3.5 h-3.5" />
+                        Architecture
                       </Link>
                     </>
                   )}

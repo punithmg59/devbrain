@@ -43,13 +43,15 @@ async def github_login() -> RedirectResponse:
     redis = get_redis()
     await redis.setex(f"oauth_state:{state}", 600, "1")
 
+    redirect_uri = settings.oauth_redirect_uri
     params = {
         "client_id": settings.github_client_id,
-        "redirect_uri": f"{settings.app_url}/api/auth/github/callback",
+        "redirect_uri": redirect_uri,
         "scope": "read:user user:email repo",
         "state": state,
     }
     authorize_url = f"{GITHUB_AUTHORIZE_URL}?{urlencode(params)}"
+    logger.info("[OAuth] authorize redirect_uri=%s", redirect_uri)
     return RedirectResponse(url=authorize_url, status_code=302)
 
 
@@ -82,6 +84,7 @@ async def github_callback(
                 "client_id": settings.github_client_id,
                 "client_secret": settings.github_client_secret,
                 "code": code,
+                "redirect_uri": settings.oauth_redirect_uri,
             },
             headers={"Accept": "application/json"},
         )
@@ -156,6 +159,16 @@ async def github_callback(
         samesite="lax",
         max_age=SESSION_MAX_AGE,
         secure=settings.environment != "development",
+        # Host-only cookie. Forcing Domain=localhost while the callback is served
+        # from 127.0.0.1 makes the browser reject the cookie (domain mismatch).
+        domain=None,
+        path="/",
+    )
+    logger.info(
+        "[OAuth] session cookie set for user_id=%s token_hash=%s… callback_host=%s",
+        user.id,
+        hash_token(raw_token)[:12],
+        settings.app_url,
     )
     return response
 

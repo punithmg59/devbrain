@@ -57,7 +57,7 @@ COLUMN_DDL = {
 
 
 async def audit_and_fix():
-    engine = create_async_engine(DATABASE_URL, connect_args={"ssl": ctx})
+    engine = create_async_engine(DATABASE_URL, connect_args={"ssl": ctx, "statement_cache_size": 0})
 
     all_missing = {}
 

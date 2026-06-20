@@ -1,4 +1,7 @@
+import logging
 import re
+
+logger = logging.getLogger(__name__)
 
 
 # --- JavaScript / TypeScript (regex-based) ---
@@ -27,67 +30,57 @@ _FASTAPI_ROUTE = re.compile(
 
 
 def parse_javascript(content: str, file_path: str) -> list[dict]:
+    try:
+        return _parse_javascript_impl(content, file_path)
+    except Exception:
+        logger.warning("JS/TS parser failed for %s; skipping file", file_path, exc_info=True)
+        return []
+
+
+def _parse_javascript_impl(content: str, file_path: str) -> list[dict]:
     # Regex fallback since no tree-sitter
     nodes: list[dict] = []
-    
+    seen_full_paths: set[str] = set()
+
     _CALL = re.compile(r"([\w]+)\s*\(")
     all_calls = list(set(m.group(1) for m in _CALL.finditer(content)))
     
     _JS_IMPORT = re.compile(r"""import\s+(?:[\w*{}\s,]+\s+from\s+)?['"]([^'"]+)['"]""", re.MULTILINE)
     all_imports = list(set(m.group(1) for m in _JS_IMPORT.finditer(content)))
 
-    # functions (export const, function, etc)
-    _FN = re.compile(r"(?:export\s+)?(?:default\s+)?(?:const|let|var)\s+([\w]+)\s*=\s*(?:async\s*)?(?:\([^)]*\)|[\w]+)\s*=>", re.MULTILINE)
-    for m in _FN.finditer(content):
+    def _add_node(name: str, node_type: str, match: re.Match, is_async: bool = False) -> None:
+        fp = f"{file_path}:{name}"
+        if fp in seen_full_paths:
+            return
+        seen_full_paths.add(fp)
         nodes.append({
-            "name": m.group(1), 
-            "node_type": "function", 
-            "full_path": f"{file_path}:{m.group(1)}",
-            "start_line": content[:m.start()].count("\n") + 1, 
-            "end_line": content[:m.start()].count("\n") + 1, 
-            "raw_code": content, 
-            "calls": all_calls, 
+            "name": name,
+            "node_type": node_type,
+            "full_path": fp,
+            "start_line": content[:match.start()].count("\n") + 1,
+            "end_line": content[:match.start()].count("\n") + 1,
+            "raw_code": content,
+            "calls": all_calls,
             "imports": all_imports,
-            "is_exported": "export" in m.group(0),
-            "is_async": "async" in m.group(0),
-            "http_method": None,
-            "route_path": None
-        })
-        
-    _FN2 = re.compile(r"(?:export\s+)?(?:default\s+)?(?:async\s+)?function\s+([\w]+)\s*\(", re.MULTILINE)
-    for m in _FN2.finditer(content):
-        nodes.append({
-            "name": m.group(1), 
-            "node_type": "function", 
-            "full_path": f"{file_path}:{m.group(1)}",
-            "start_line": content[:m.start()].count("\n") + 1, 
-            "end_line": content[:m.start()].count("\n") + 1, 
-            "raw_code": content, 
-            "calls": all_calls, 
-            "imports": all_imports,
-            "is_exported": "export" in m.group(0),
-            "is_async": "async" in m.group(0),
+            "is_exported": "export" in match.group(0),
+            "is_async": is_async or "async" in match.group(0),
             "http_method": None,
             "route_path": None
         })
 
+    # functions (export const, function, etc)
+    _FN = re.compile(r"(?:export\s+)?(?:default\s+)?(?:const|let|var)\s+([\w]+)\s*=\s*(?:async\s*)?(?:\([^)]*\)|[\w]+)\s*=>", re.MULTILINE)
+    for m in _FN.finditer(content):
+        _add_node(m.group(1), "function", m)
+        
+    _FN2 = re.compile(r"(?:export\s+)?(?:default\s+)?(?:async\s+)?function\s+([\w]+)\s*\(", re.MULTILINE)
+    for m in _FN2.finditer(content):
+        _add_node(m.group(1), "function", m)
+
     # classes
     _CLS = re.compile(r"(?:export\s+)?(?:default\s+)?class\s+([\w]+)", re.MULTILINE)
     for m in _CLS.finditer(content):
-        nodes.append({
-            "name": m.group(1), 
-            "node_type": "class", 
-            "full_path": f"{file_path}:{m.group(1)}",
-            "start_line": content[:m.start()].count("\n") + 1, 
-            "end_line": content[:m.start()].count("\n") + 1, 
-            "raw_code": content, 
-            "calls": all_calls, 
-            "imports": all_imports,
-            "is_exported": "export" in m.group(0),
-            "is_async": False,
-            "http_method": None,
-            "route_path": None
-        })
+        _add_node(m.group(1), "class", m)
 
     return nodes
 
@@ -98,18 +91,24 @@ def parse_python(content: str, file_path: str) -> list[dict]:
     nodes: list[dict] = []
     try:
         tree = ast.parse(content)
-    except SyntaxError:
+    except (SyntaxError, ValueError, RecursionError) as exc:
+        # ValueError covers source containing null bytes; RecursionError covers
+        # pathologically nested source. None of these should fail the repo run.
+        logger.debug("Python AST parse failed for %s: %s", file_path, exc)
         return nodes
 
     imports: list[str] = []
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Import):
-            for alias in node.names:
-                imports.append(alias.name)
-        elif isinstance(node, ast.ImportFrom):
-            module = node.module or ""
-            for alias in node.names:
-                imports.append(f"{module}.{alias.name}" if module else alias.name)
+    try:
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                for alias in node.names:
+                    imports.append(alias.name)
+            elif isinstance(node, ast.ImportFrom):
+                module = node.module or ""
+                for alias in node.names:
+                    imports.append(f"{module}.{alias.name}" if module else alias.name)
+    except Exception:
+        logger.debug("Import extraction failed for %s", file_path, exc_info=True)
 
     class Visitor(ast.NodeVisitor):
         def __init__(self):
@@ -217,14 +216,28 @@ def parse_python(content: str, file_path: str) -> list[dict]:
             self.generic_visit(node)
             self.class_stack.pop()
 
-    Visitor().visit(tree)
+    try:
+        Visitor().visit(tree)
+    except RecursionError:
+        logger.warning("Python parser hit recursion limit on %s; returning partial nodes", file_path)
+    except Exception:
+        logger.warning("Python parser failed on %s; returning partial nodes", file_path, exc_info=True)
     return nodes
 
 
 def parse_file(content: str, file_path: str) -> list[dict]:
-    ext = file_path.rsplit(".", 1)[-1].lower() if "." in file_path else ""
-    if ext == "py":
-        return parse_python(content, file_path)
-    if ext in ("js", "jsx", "ts", "tsx"):
-        return parse_javascript(content, file_path)
-    return []
+    """Parse a single source file into node dicts.
+
+    Contract: this function NEVER raises. Any failure for a single file returns an
+    empty list so the repository-wide analysis can continue (fault tolerance).
+    """
+    try:
+        ext = file_path.rsplit(".", 1)[-1].lower() if "." in file_path else ""
+        if ext == "py":
+            return parse_python(content, file_path)
+        if ext in ("js", "jsx", "ts", "tsx"):
+            return parse_javascript(content, file_path)
+        return []
+    except Exception:
+        logger.warning("Parser crashed on %s; skipping file", file_path, exc_info=True)
+        return []

@@ -44,6 +44,18 @@ EXTENSION_LANGUAGE = {
 
 ANALYZABLE_EXTENSIONS = {".py", ".js", ".jsx", ".ts", ".tsx"}
 
+# Files that must never be decoded, previewed, or parsed. Storing their bytes
+# (or a NUL-containing decode) into a Postgres text column raises
+# CharacterNotInRepertoireError (0x00 invalid for UTF8).
+BINARY_EXTENSIONS = {
+    ".pkl", ".pt", ".pth", ".bin", ".exe", ".dll", ".so", ".jar",
+    ".zip", ".tar", ".gz", ".pdf", ".png", ".jpg", ".jpeg", ".gif",
+    ".mp4", ".mp3",
+}
+
+# Leading bytes sniffed for a NUL when classifying by content.
+_BINARY_SNIFF_BYTES = 8192
+
 MAX_FILE_BYTES = 512_000
 MAX_FILES = 500
 MAX_EDGES = 2500
@@ -59,6 +71,20 @@ def detect_language(path: str) -> str | None:
 
 def is_analyzable(path: str) -> bool:
     return Path(path).suffix.lower() in ANALYZABLE_EXTENSIONS
+
+
+def is_binary_file(path: str, raw: bytes | None = None) -> bool:
+    """Return True if a file must be treated as binary (never decoded/parsed).
+
+    Detection is by extension first, then by a NUL-byte sniff of the raw bytes.
+    NUL (0x00) is valid UTF-8 but cannot be stored in a Postgres text column, so
+    any file containing one is treated as binary regardless of its extension.
+    """
+    if Path(path).suffix.lower() in BINARY_EXTENSIONS:
+        return True
+    if raw is not None and b"\x00" in raw[:_BINARY_SNIFF_BYTES]:
+        return True
+    return False
 
 
 def normalize_folder_path(folder_path: str) -> str:

@@ -13,21 +13,39 @@ settings = get_settings()
 
 
 def _build_async_connect_args(database_url: str, environment: str) -> dict:
-    """Supabase pooler requires SSL; asyncpg on Windows fails strict cert verify in dev."""
-    if "supabase" not in database_url and "pooler.supabase.com" not in database_url:
+    """Supabase pooler requires SSL; asyncpg on Windows fails strict cert verify in dev.
+    
+    IMPORTANT: PgBouncer transaction pooling (pooler.supabase.com:6543) does not support
+    prepared statements. Must set statement_cache_size=0 to avoid DuplicatePreparedStatementError.
+    """
+    # Check if using Supabase (either pooler or direct connection)
+    is_supabase = "supabase" in database_url or "pooler.supabase.com" in database_url
+    
+    if not is_supabase:
         return {}
+    
+    # Build SSL context
     if environment == "development":
         ctx = ssl.create_default_context()
         ctx.check_hostname = False
         ctx.verify_mode = ssl.CERT_NONE
-        return {"ssl": ctx}
-    return {"ssl": True}
+        ssl_arg = ctx
+    else:
+        ssl_arg = True
+    
+    # CRITICAL: statement_cache_size=0 is required for PgBouncer transaction pooling
+    return {"ssl": ssl_arg, "statement_cache_size": 0}
 
 
-_connect_args = _build_async_connect_args(settings.database_url, settings.environment)
+# Fix: Use session pooling port (5432) instead of transaction pooling (6543)
+# Transaction pooling doesn't support prepared statements, causing DuplicatePreparedStatementError
+# Session pooling supports prepared statements and is compatible with SQLAlchemy/asyncpg
+database_url = settings.database_url.replace(':6543', ':5432')
+
+_connect_args = _build_async_connect_args(database_url, settings.environment)
 
 engine = create_async_engine(
-    settings.database_url,
+    database_url,
     connect_args=_connect_args,
     pool_size=5,
     max_overflow=5,

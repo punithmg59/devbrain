@@ -1,5 +1,17 @@
 /** TypeScript types matching backend repo-detail schemas. */
 
+/**
+ * Statuses that mean analysis produced a usable graph. "completed_with_warnings"
+ * means the graph was built but some files were skipped during parsing — it must
+ * be treated as a success everywhere a completed repo would be (viewing graph,
+ * impact, stats, re-analyze, etc.).
+ */
+export const ANALYZED_STATUSES = ["completed", "completed_with_warnings"] as const;
+
+export function isAnalyzed(status?: string | null): boolean {
+  return status === "completed" || status === "completed_with_warnings";
+}
+
 export interface FileTreeNode {
   id: string;
   name: string;

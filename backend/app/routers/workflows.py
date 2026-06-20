@@ -21,6 +21,7 @@ from app.schemas.workflow import (
     WorkflowNodeRef,
     WorkflowSummary,
 )
+from app.services.analysis import ANALYZED_STATUSES
 from app.services.workflow_discovery_service import WorkflowDiscoveryService
 from app.services.workflow_graph_service import WorkflowGraphService
 from app.services.workflow_learning_service import WorkflowLearningService
@@ -77,7 +78,7 @@ async def discover_workflows(
     db: AsyncSession = Depends(get_db),
 ) -> DiscoverWorkflowsResponse:
     repo = await _get_user_repo(repo_id, current_user, db)
-    if repo.analysis_status != "completed":
+    if repo.analysis_status not in ANALYZED_STATUSES:
         raise HTTPException(status_code=400, detail="Repository analysis not complete")
     count = await discovery.discover_for_repo(repo.id, db)
     workflows = await discovery.list_workflows(repo.id, db)

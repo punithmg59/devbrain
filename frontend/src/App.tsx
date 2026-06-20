@@ -8,6 +8,9 @@ import DashboardPage from "./pages/DashboardPage";
 import RepoDetailPage from "./pages/RepoDetailPage";
 import ImpactRadarPage from "./pages/ImpactRadarPage";
 import ProjectBrainPage from "./pages/ProjectBrainPage";
+import ArchitectureExplorerPage from "./pages/ArchitectureExplorerPage";
+import ArchitectureIntelligencePage from "./pages/ArchitectureIntelligencePage";
+import StoryModePage from "./pages/StoryModePage";
 import AuthErrorPage from "./pages/AuthErrorPage";
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -71,6 +74,36 @@ function App() {
         element={
           <ProtectedRoute>
             <ProjectBrainPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/repos/:repoId/architecture"
+        element={
+          <ProtectedRoute>
+            <ErrorBoundary>
+              <ArchitectureExplorerPage />
+            </ErrorBoundary>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/repos/:repoId/architecture/intelligence"
+        element={
+          <ProtectedRoute>
+            <ErrorBoundary>
+              <ArchitectureIntelligencePage />
+            </ErrorBoundary>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/repos/:repoId/architecture/story"
+        element={
+          <ProtectedRoute>
+            <ErrorBoundary>
+              <StoryModePage />
+            </ErrorBoundary>
           </ProtectedRoute>
         }
       />

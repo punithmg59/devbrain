@@ -11,13 +11,16 @@
   "dependencies": {
     "@tanstack/react-query": "^5.40.0",
     "axios": "^1.7.0",
+    "dagre": "^0.8.5",
     "lucide-react": "^0.383.0",
     "react": "^18.3.0",
     "react-dom": "^18.3.0",
     "react-router-dom": "^6.23.0",
+    "reactflow": "^11.11.4",
     "zustand": "^4.5.2"
   },
   "devDependencies": {
+    "@types/dagre": "^0.7.54",
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^4.3.0",

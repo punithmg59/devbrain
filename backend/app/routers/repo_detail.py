@@ -30,6 +30,7 @@ from app.schemas.repo_detail import (
     ImpactReportV2,
     ProjectBrainResponse,
 )
+from app.services.analysis import ANALYZED_STATUSES
 from app.services.impact_analysis_v2 import run_impact_analysis
 from app.services.project_brain import get_project_brain_dashboard
 
@@ -71,7 +72,7 @@ async def get_file_tree(
 ):
     repo = await verify_repo_ownership(repo_id, str(current_user.id), db)
     
-    if repo.analysis_status != "completed":
+    if repo.analysis_status not in ANALYZED_STATUSES:
         raise HTTPException(
             status_code=400,
             detail="Analysis not complete yet"

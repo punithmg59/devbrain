@@ -1,5 +1,7 @@
 import asyncio
 import logging
+import os
+import time
 from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
@@ -15,6 +17,21 @@ logger = logging.getLogger(__name__)
 
 ANALYSIS_TIMEOUT_SECONDS = 600
 STALE_ANALYSIS_MINUTES = 3
+
+# ── Cleanup tuning ────────────────────────────────────────────────────
+# Re-analysis must delete the repo's prior graph. A single
+# `DELETE FROM edges WHERE repo_id = ?` removing tens of thousands of rows
+# exceeds Postgres/Supabase statement_timeout and raises QueryCanceledError.
+# We delete in small committed batches so each statement stays well under the
+# timeout and locks are released between batches.
+DELETE_BATCH_SIZE = int(os.getenv("ANALYSIS_DELETE_BATCH_SIZE", "1000"))
+DELETE_MAX_RETRIES = int(os.getenv("ANALYSIS_DELETE_RETRIES", "3"))
+DELETE_RETRY_BASE_DELAY = 0.5  # seconds; exponential backoff
+
+# Statuses that mean analysis produced a usable graph. Both must be treated as
+# "ready" by any read path (impact, repo detail, workflows, frontend gates).
+# "completed_with_warnings" = the graph was built, but some files were skipped.
+ANALYZED_STATUSES: tuple[str, ...] = ("completed", "completed_with_warnings")
 
 _active_analyses: set[str] = set()
 
@@ -92,7 +109,7 @@ async def run_repo_analysis(repo_id: UUID, user_id: UUID) -> None:
                 repo.default_branch,
             )
 
-            await _clear_repo_analysis(db, repo.id)
+            cleanup_clean = await _clear_repo_analysis(db, repo.id)
 
             payload: AnalysisPayload = await asyncio.wait_for(
                 asyncio.to_thread(collect_analysis_payload, clone_path),
@@ -100,12 +117,28 @@ async def run_repo_analysis(repo_id: UUID, user_id: UUID) -> None:
             )
             stats = await _persist_analysis(db, repo, payload)
 
+            failed_count = len(payload.failed_files)
+            # A single unparseable file, or a cleanup that timed out, must NEVER
+            # fail the repo. "failed" is reserved for clone failure / DB
+            # unavailable / repo inaccessible (handled in the except blocks below).
+            has_warnings = bool(failed_count) or not cleanup_clean
             repo.total_files = stats["total_files"]
             repo.total_functions = stats["total_functions"]
             repo.total_lines = stats["total_lines"]
-            repo.analysis_status = "completed"
+            repo.analysis_status = (
+                "completed_with_warnings" if has_warnings else "completed"
+            )
             repo.last_analyzed_at = datetime.now(timezone.utc)
             await db.commit()
+
+            if has_warnings:
+                logger.warning(
+                    "Analysis completed_with_warnings for %s: %d file(s) skipped, "
+                    "cleanup_clean=%s",
+                    repo.full_name,
+                    failed_count,
+                    cleanup_clean,
+                )
 
             try:
                 from app.services.alias_seeder import (
@@ -198,12 +231,93 @@ async def run_repo_analysis(repo_id: UUID, user_id: UUID) -> None:
             _active_analyses.discard(repo_key)
 
 
-async def _clear_repo_analysis(db: AsyncSession, repo_id: UUID) -> None:
-    await db.execute(delete(Edge).where(Edge.repo_id == repo_id))
-    await db.execute(delete(Node).where(Node.repo_id == repo_id))
-    await db.execute(delete(RepoFile).where(RepoFile.repo_id == repo_id))
-    await db.execute(delete(FolderTree).where(FolderTree.repo_id == repo_id))
-    await db.flush()
+async def _delete_batch_with_retry(db: AsyncSession, model, repo_id: UUID, batch_size: int) -> int:
+    """Delete up to `batch_size` rows of `model` for a repo, with retry.
+
+    Returns the number of rows deleted in this batch. Each successful batch is
+    committed so locks are released and the statement_timeout clock resets.
+    """
+    # DELETE ... WHERE id IN (SELECT id ... WHERE repo_id = ? LIMIT N)
+    ids_subq = (
+        select(model.id).where(model.repo_id == repo_id).limit(batch_size)
+    )
+    stmt = delete(model).where(model.id.in_(ids_subq))
+
+    last_exc: Exception | None = None
+    for attempt in range(1, DELETE_MAX_RETRIES + 1):
+        try:
+            result = await db.execute(stmt)
+            await db.commit()
+            return result.rowcount or 0
+        except Exception as exc:  # transient timeout / disconnect → retry
+            last_exc = exc
+            await db.rollback()
+            logger.warning(
+                "DELETE %s batch failed (attempt %d/%d): %s",
+                model.__tablename__, attempt, DELETE_MAX_RETRIES, exc,
+            )
+            if attempt < DELETE_MAX_RETRIES:
+                await asyncio.sleep(DELETE_RETRY_BASE_DELAY * (2 ** (attempt - 1)))
+    assert last_exc is not None
+    raise last_exc
+
+
+async def _delete_table_in_batches(db: AsyncSession, model, repo_id: UUID) -> int:
+    """Delete all of a repo's rows for `model` in committed batches."""
+    start = time.perf_counter()
+    total = 0
+    while True:
+        deleted = await _delete_batch_with_retry(db, model, repo_id, DELETE_BATCH_SIZE)
+        total += deleted
+        if deleted < DELETE_BATCH_SIZE:
+            break
+    logger.info(
+        "Cleared %s: %d row(s) in %.3fs (batch=%d)",
+        model.__tablename__, total, time.perf_counter() - start, DELETE_BATCH_SIZE,
+    )
+    return total
+
+
+async def _clear_repo_analysis(db: AsyncSession, repo_id: UUID) -> bool:
+    """Remove a repo's prior analysis in safe, committed batches.
+
+    Returns True if cleanup completed cleanly, or False if any table could not be
+    fully cleared (the caller marks the run completed_with_warnings). This function
+    NEVER raises: a cleanup timeout must not fail the whole analysis.
+
+    Order matters — edges reference nodes, so clearing edges first avoids extra
+    cascade work when nodes are removed.
+    """
+    overall_start = time.perf_counter()
+    clean = True
+    for model in (Edge, Node, RepoFile, FolderTree):
+        try:
+            await _delete_table_in_batches(db, model, repo_id)
+        except Exception:
+            # Batched delete failed — try a single brute-force DELETE as fallback
+            logger.warning(
+                "Batched cleanup of %s failed; trying single DELETE fallback",
+                model.__tablename__, exc_info=True,
+            )
+            try:
+                await db.rollback()
+                await db.execute(delete(model).where(model.repo_id == repo_id))
+                await db.commit()
+            except Exception:
+                clean = False
+                logger.error(
+                    "Cleanup of %s for repo %s did not fully complete; continuing analysis",
+                    model.__tablename__, repo_id, exc_info=True,
+                )
+                try:
+                    await db.rollback()
+                except Exception:
+                    pass
+    logger.info(
+        "Repo %s cleanup finished in %.3fs (clean=%s)",
+        repo_id, time.perf_counter() - overall_start, clean,
+    )
+    return clean
 
 
 async def _persist_analysis(db: AsyncSession, repo: Repo, payload: AnalysisPayload) -> dict:
@@ -219,8 +333,15 @@ async def _persist_analysis(db: AsyncSession, repo: Repo, payload: AnalysisPaylo
     db.add_all(folder_models)
     await db.flush()
 
-    node_models: list[Node] = []
+    # Deduplicate nodes by full_path (safety net — collector should already
+    # deduplicate, but the DB unique constraint is fatal if any slip through).
+    seen_paths: dict[str, dict] = {}
     for n in payload.nodes:
+        seen_paths[n["full_path"]] = n  # last wins
+    unique_nodes = list(seen_paths.values())
+
+    node_models: list[Node] = []
+    for n in unique_nodes:
         file_id = path_to_file_id.get(n["file_path"])
         node_models.append(
             Node(
@@ -246,11 +367,16 @@ async def _persist_analysis(db: AsyncSession, repo: Repo, payload: AnalysisPaylo
 
     path_to_node_id = {nm.full_path: nm.id for nm in node_models}
     edge_models: list[Edge] = []
+    seen_edge_keys: set[tuple[str, str, str]] = set()
     for e in payload.edges:
         from_id = path_to_node_id.get(e["from_path"])
         to_id = path_to_node_id.get(e["to_path"])
         if not from_id or not to_id:
             continue
+        edge_key = (str(from_id), str(to_id), e["edge_type"])
+        if edge_key in seen_edge_keys:
+            continue
+        seen_edge_keys.add(edge_key)
         edge_models.append(
             Edge(
                 repo_id=repo.id,
@@ -267,3 +393,4 @@ async def _persist_analysis(db: AsyncSession, repo: Repo, payload: AnalysisPaylo
         "total_functions": payload.total_functions,
         "total_lines": payload.total_lines,
     }
+

@@ -1,4 +1,5 @@
 import hashlib
+import logging
 import secrets
 from datetime import datetime, timezone
 
@@ -9,6 +10,8 @@ from sqlalchemy.orm import selectinload
 
 from app.database import get_db
 from app.models import Session, User
+
+logger = logging.getLogger(__name__)
 
 
 def create_session_token() -> str:
@@ -46,10 +49,15 @@ async def get_current_user(
 ) -> User:
     token = request.cookies.get("session_token")
     if not token:
+        logger.warning(
+            "[auth] /me missing session_token cookie. cookies_received=%s",
+            list(request.cookies.keys()),
+        )
         raise HTTPException(status_code=401, detail="Not authenticated")
 
     user = await verify_session(token, db)
     if user is None:
+        logger.warning("[auth] session lookup failed for token_hash=%s…", hash_token(token)[:12])
         raise HTTPException(status_code=401, detail="Invalid or expired session")
 
     return user

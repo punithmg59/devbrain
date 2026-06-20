@@ -101,11 +101,6 @@ async def disconnect_repo(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> dict:
-    result = await db.execute(
-        select(Repo).where(Repo.id == UUID(repo_id), Repo.user_id == current_user.id)
-    )
-    repo = result.scalar_one_or_none()
-    if not repo:
-        raise HTTPException(status_code=404, detail="Repository not found")
-    await db.delete(repo)
-    return {"message": "Repository disconnected"}
+    from app.services.repo_deletion import RepositoryDeletionService
+    await RepositoryDeletionService.delete_repository(db, UUID(repo_id), current_user.id)
+    return {"message": "Repository deleted successfully"}
