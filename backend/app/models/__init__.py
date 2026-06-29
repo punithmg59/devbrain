@@ -15,6 +15,8 @@ from .workflow import (
     WorkflowNode,
     WorkflowService,
 )
+from .analysis_job import AnalysisJob, FileError
+from .impact_analysis import ImpactAnalysis
 
 __all__ = [
     "User",
@@ -35,4 +37,7 @@ __all__ = [
     "BlastRadiusCache",
     "CriticalPath",
     "ImpactMetric",
+    "AnalysisJob",
+    "FileError",
+    "ImpactAnalysis",
 ]

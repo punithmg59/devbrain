@@ -226,11 +226,7 @@ def parse_python(content: str, file_path: str) -> list[dict]:
 
 
 def parse_file(content: str, file_path: str) -> list[dict]:
-    """Parse a single source file into node dicts.
-
-    Contract: this function NEVER raises. Any failure for a single file returns an
-    empty list so the repository-wide analysis can continue (fault tolerance).
-    """
+    """Contract: NEVER raises. Returns [] on any failure."""
     try:
         ext = file_path.rsplit(".", 1)[-1].lower() if "." in file_path else ""
         if ext == "py":
@@ -238,6 +234,10 @@ def parse_file(content: str, file_path: str) -> list[dict]:
         if ext in ("js", "jsx", "ts", "tsx"):
             return parse_javascript(content, file_path)
         return []
+    except RecursionError:
+        logger.warning("parse_file: recursion limit on %s", file_path)
+        return []
     except Exception:
-        logger.warning("Parser crashed on %s; skipping file", file_path, exc_info=True)
+        logger.warning("parse_file: unhandled exception on %s",
+                       file_path, exc_info=True)
         return []

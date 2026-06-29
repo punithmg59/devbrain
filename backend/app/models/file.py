@@ -39,6 +39,15 @@ class RepoFile(Base):
     content_preview: Mapped[str | None] = mapped_column(Text, nullable=True)
     s3_key: Mapped[str | None] = mapped_column(String(500), nullable=True)
     importance_score: Mapped[float] = mapped_column(Float, default=0.5, server_default="0.5")
+    content_hash: Mapped[str | None] = mapped_column(
+        String(64), nullable=True, index=True
+    )
+    last_commit_sha: Mapped[str | None] = mapped_column(
+        String(100), nullable=True
+    )
+    last_analyzed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),

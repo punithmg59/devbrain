@@ -40,6 +40,15 @@ class Repo(Base):
     analysis_status: Mapped[str] = mapped_column(
         String(50), default="pending", server_default="pending"
     )
+    last_commit_sha: Mapped[str | None] = mapped_column(
+        String(100), nullable=True, index=True
+    )
+    failure_reason: Mapped[str | None] = mapped_column(
+        Text, nullable=True
+    )
+    content_hash: Mapped[str | None] = mapped_column(
+        String(64), nullable=True
+    )
     last_analyzed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     total_files: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     total_functions: Mapped[int] = mapped_column(Integer, default=0, server_default="0")

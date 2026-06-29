@@ -18,21 +18,23 @@ if config.config_file_name is not None:
 
 target_metadata = Base.metadata
 
+# Convert asyncpg URL to psycopg2 format for migrations
+sync_url = settings.database_url.replace("postgresql+asyncpg://", "postgresql://")
 config.set_main_option(
     "sqlalchemy.url",
-    settings.direct_url.replace("%", "%%"),
+    sync_url.replace("%", "%%"),
 )
 
 
 def _sync_connect_args() -> dict:
-    if "supabase" in settings.direct_url:
+    if "supabase" in sync_url:
         return {"sslmode": "require"}
     return {}
 
 
 def run_migrations_offline() -> None:
     """Run migrations in 'offline' mode."""
-    url = settings.direct_url
+    url = sync_url
     context.configure(
         url=url,
         target_metadata=target_metadata,
@@ -59,7 +61,7 @@ def do_run_migrations(connection: Connection) -> None:
 def run_migrations_online() -> None:
     """Run migrations with sync psycopg2 (reliable for Supabase pooler)."""
     connectable = create_engine(
-        settings.direct_url,
+        sync_url,
         poolclass=pool.NullPool,
         connect_args=_sync_connect_args(),
     )

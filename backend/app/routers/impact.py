@@ -8,7 +8,7 @@ from sqlalchemy.exc import DBAPIError, DisconnectionError, OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.models import Repo, User
+from app.models import Repo, User, ImpactAnalysis
 from app.schemas.impact import (
     BlastRadiusReport,
     BlastRadiusRequest,
@@ -22,6 +22,10 @@ from app.schemas.impact import (
     ImpactMetricSummary,
     ImpactRequest,
     ImpactResult,
+    SimpleImpactRequest,
+    SimpleImpactResult,
+    NodeSearchResult,
+    ImpactHistoryItem,
 )
 from app.schemas.resolver import (
     AutocompleteResponse,
@@ -31,6 +35,8 @@ from app.schemas.resolver import (
 from app.services.analysis import ANALYZED_STATUSES
 from app.services.impact_service import ImpactService
 from app.services.resolver_service import SmartResolver
+from app.services.impact.impact_analyzer import analyze_impact as analyze_impact_node
+from app.services.impact.recommendations import generate_recommendations
 from app.utils.auth import get_current_user
 
 logger = logging.getLogger(__name__)
@@ -706,3 +712,234 @@ async def get_impact_graph(
         exact_dependencies=exact_deps,
         graph=ImpactGraph(nodes=graph_nodes, edges=graph_edges),
     )
+
+
+# ── New simplified Impact API endpoints (Day 6) ─────────────────────────────
+
+@router.post("/api/impact/analyze", response_model=SimpleImpactResult)
+async def analyze_impact_endpoint(
+    request: SimpleImpactRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Run impact analysis on a specific node by node_id.
+
+    Steps:
+        1. Verify repo exists and user has access
+        2. Run impact analysis (Neo4j traversal)
+        3. Generate AI recommendations
+        4. Save analysis to impact_analyses table
+        5. Return ImpactResult
+
+    Cached for 1 hour per node — fast on repeated calls.
+    """
+    # Step 1: verify repo
+    try:
+        uid = UUID(request.repo_id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail="Invalid repository id") from e
+
+    repo = (await db.execute(
+        select(Repo).where(Repo.id == uid, Repo.user_id == current_user.id)
+    )).scalar_one_or_none()
+    if not repo:
+        raise HTTPException(status_code=404, detail="Repository not found")
+
+    # Step 2: run analysis
+    try:
+        result = await analyze_impact_node(request.node_id, request.repo_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except Exception as exc:
+        logger.exception("Impact analysis failed for node %s", request.node_id)
+        raise HTTPException(status_code=500, detail="Impact analysis failed")
+
+    # Step 3: generate AI recommendations
+    recommendations = await generate_recommendations(result)
+    result.recommendations = recommendations
+
+    # Step 4: save to history
+    try:
+        record = ImpactAnalysis(
+            repo_id=request.repo_id,
+            node_id=request.node_id,
+            node_name=result.node_name,
+            node_type=result.node_type,
+            risk_score=result.risk_score.value,
+            risk_level=result.risk_score.level,
+            blast_radius=result.blast_radius,
+            affected_count=len(result.affected_nodes),
+            effort_label=result.effort_estimate.label,
+            recommendations=[r.dict() for r in recommendations],
+        )
+        db.add(record)
+        await db.commit()
+    except Exception as exc:
+        logger.warning("Could not save impact history: %s", exc)
+        # Non-fatal — return result even if save fails
+
+    return result
+
+
+@router.get("/api/impact/search/{repo_id}", response_model=list[NodeSearchResult])
+async def search_nodes(
+    repo_id: str,
+    q: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Search nodes by name for the Impact page search bar.
+    Returns up to 20 results ordered by blast_radius descending.
+    Used as the user types to find components to analyze.
+    """
+    try:
+        uid = UUID(repo_id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail="Invalid repository id") from e
+
+    repo = (await db.execute(
+        select(Repo).where(Repo.id == uid, Repo.user_id == current_user.id)
+    )).scalar_one_or_none()
+    if not repo:
+        raise HTTPException(status_code=404, detail="Repository not found")
+
+    from app.graph.neo4j_client import run_query
+
+    query = """
+    MATCH (n:Node {repo_id: $repo_id})
+    WHERE toLower(n.name) CONTAINS toLower($search)
+    RETURN
+        n.id           AS id,
+        n.name         AS name,
+        n.node_type    AS node_type,
+        n.file_path    AS file_path,
+        n.blast_radius AS blast_radius,
+        n.risk_level   AS risk_level,
+        n.fan_in       AS fan_in
+    ORDER BY n.blast_radius DESC, n.fan_in DESC
+    LIMIT 20
+    """
+    try:
+        rows = await run_query(query, {"repo_id": repo_id, "search": q})
+    except Exception as exc:
+        logger.error("Neo4j search failed: %s", exc)
+        raise HTTPException(status_code=500, detail="Search failed")
+
+    return [
+        NodeSearchResult(
+            id=r.get("id", ""),
+            name=r.get("name", ""),
+            node_type=r.get("node_type", "unknown"),
+            file_path=r.get("file_path", ""),
+            blast_radius=r.get("blast_radius") or 0,
+            risk_level=r.get("risk_level", "low"),
+            fan_in=r.get("fan_in") or 0,
+        )
+        for r in rows
+    ]
+
+
+@router.get("/api/impact/top/{repo_id}", response_model=list[NodeSearchResult])
+async def get_top_impact_nodes(
+    repo_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Return top 20 nodes by blast_radius.
+    Shown on Impact page initial load.
+    Answers: which components are highest risk right now?
+    """
+    try:
+        uid = UUID(repo_id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail="Invalid repository id") from e
+
+    repo = (await db.execute(
+        select(Repo).where(Repo.id == uid, Repo.user_id == current_user.id)
+    )).scalar_one_or_none()
+    if not repo:
+        raise HTTPException(status_code=404, detail="Repository not found")
+
+    from app.graph.neo4j_client import run_query
+
+    query = """
+    MATCH (n:Node {repo_id: $repo_id})
+    WHERE n.blast_radius > 0
+    RETURN
+        n.id           AS id,
+        n.name         AS name,
+        n.node_type    AS node_type,
+        n.file_path    AS file_path,
+        n.blast_radius AS blast_radius,
+        n.risk_level   AS risk_level,
+        n.fan_in       AS fan_in
+    ORDER BY n.blast_radius DESC
+    LIMIT 20
+    """
+    try:
+        rows = await run_query(query, {"repo_id": repo_id})
+    except Exception as exc:
+        logger.error("Neo4j top nodes query failed: %s", exc)
+        raise HTTPException(status_code=500, detail="Query failed")
+
+    return [
+        NodeSearchResult(
+            id=r.get("id", ""),
+            name=r.get("name", ""),
+            node_type=r.get("node_type", "unknown"),
+            file_path=r.get("file_path", ""),
+            blast_radius=r.get("blast_radius") or 0,
+            risk_level=r.get("risk_level", "low"),
+            fan_in=r.get("fan_in") or 0,
+        )
+        for r in rows
+    ]
+
+
+@router.get("/api/impact/history/{repo_id}", response_model=list[ImpactHistoryItem])
+async def get_impact_history(
+    repo_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Return the last 10 impact analyses run for this repo.
+    Shown in the recommendations panel of the Impact page.
+    """
+    try:
+        uid = UUID(repo_id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail="Invalid repository id") from e
+
+    repo = (await db.execute(
+        select(Repo).where(Repo.id == uid, Repo.user_id == current_user.id)
+    )).scalar_one_or_none()
+    if not repo:
+        raise HTTPException(status_code=404, detail="Repository not found")
+
+    from sqlalchemy import desc
+
+    result = await db.execute(
+        select(ImpactAnalysis)
+        .where(ImpactAnalysis.repo_id == uid)
+        .order_by(desc(ImpactAnalysis.created_at))
+        .limit(10)
+    )
+    records = result.scalars().all()
+
+    return [
+        ImpactHistoryItem(
+            id=str(r.id),
+            node_id=r.node_id,
+            node_name=r.node_name,
+            node_type=r.node_type,
+            risk_score=r.risk_score,
+            risk_level=r.risk_level,
+            blast_radius=r.blast_radius,
+            created_at=r.created_at.isoformat() if r.created_at else "",
+        )
+        for r in records
+    ]

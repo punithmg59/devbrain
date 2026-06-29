@@ -29,8 +29,16 @@ class Settings(BaseSettings):
     # Groq
     groq_api_key: str
 
+    # Anthropic (for AI recommendations)
+    anthropic_api_key: str = ""
+
     # Redis
     redis_url: str = "redis://localhost:6379"
+
+    # Neo4j
+    neo4j_uri: str = "bolt://localhost:7687"
+    neo4j_user: str = "neo4j"
+    neo4j_password: str = "Password9591@"
 
     # Supabase
     supabase_url: str

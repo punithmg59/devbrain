@@ -343,3 +343,85 @@ class ImpactResult(BaseModel):
     journey_impact_items: List[JourneyImpactItem] = Field(default_factory=list)
     business_impact_items: List[BusinessImpactItem] = Field(default_factory=list)
     version: str = "5.0"
+
+
+# ── New simplified schemas for Day 6 Impact API ─────────────────────────────
+
+class SimpleImpactRequest(BaseModel):
+    node_id: str
+    repo_id: str
+
+
+class AffectedNode(BaseModel):
+    id: str
+    name: str
+    node_type: str
+    file_path: str
+    risk_level: str
+    depth: int
+    fan_in: int
+    fan_out: int
+
+
+class RiskScore(BaseModel):
+    value: float
+    level: str
+    explanation: str
+
+
+class EffortEstimate(BaseModel):
+    hours: float
+    label: str
+    confidence: float
+
+
+class Recommendation(BaseModel):
+    title: str
+    body: str
+    priority: str
+
+
+class SimpleGraphEdge(BaseModel):
+    source: str
+    target: str
+    edge_type: str
+    is_critical: bool
+
+
+class SimpleImpactResult(BaseModel):
+    node_id: str
+    node_name: str
+    node_type: str
+    file_path: str
+    risk_score: RiskScore
+    blast_radius: int
+    effort_estimate: EffortEstimate
+    affected_nodes: List[AffectedNode]
+    affected_apis: List[AffectedNode]
+    affected_services: List[AffectedNode]
+    affected_tables: List[AffectedNode]
+    graph_edges: List[SimpleGraphEdge]
+    recommendations: List[Recommendation]
+    repo_id: str
+    analyzed_at: str
+
+
+class NodeSearchResult(BaseModel):
+    id: str
+    name: str
+    node_type: str
+    file_path: str
+    blast_radius: int
+    risk_level: str
+    fan_in: int
+
+
+class ImpactHistoryItem(BaseModel):
+    id: str
+    node_id: str
+    node_name: str
+    node_type: str
+    risk_score: float
+    risk_level: str
+    blast_radius: int
+    created_at: str

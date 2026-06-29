@@ -1,3 +1,4 @@
+import asyncio
 import logging
 
 import sentry_sdk
@@ -20,8 +21,11 @@ from app.routers import (
     workflows,
     intelligence,
 )
+from app.services.pipeline.orchestrator import worker_loop as _worker_loop
 from app.utils.errors import DevBrainException
 from app.utils.redis_client import close_redis, init_redis
+from app.graph.neo4j_client import verify_connectivity, close_driver
+from app.graph.schema import apply_schema
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -98,11 +102,13 @@ async def sqlalchemy_schema_error_handler(request: Request, exc: ProgrammingErro
 
 
 _schema_status: dict[str, list[str]] = {}
+_stop_event: asyncio.Event | None = None
+_worker_task: asyncio.Task | None = None
 
 
 @app.on_event("startup")
 async def startup_event() -> None:
-    global _schema_status
+    global _schema_status, _stop_event, _worker_task
 
     # 1. Redis
     try:
@@ -134,12 +140,40 @@ async def startup_event() -> None:
     else:
         logger.warning("Database: connection failed")
 
+    # 5. Start worker loop
+    _stop_event = asyncio.Event()
+    _worker_task = asyncio.create_task(_worker_loop(_stop_event))
+    logger.info("DevBrain worker loop started")
+
+    # 6. Neo4j connectivity and schema
+    neo4j_ok = await verify_connectivity()
+    if neo4j_ok:
+        await apply_schema()
+    else:
+        logger.warning(
+            "Neo4j not reachable at startup. "
+            "Graph features will be unavailable until Neo4j connects. "
+            "Analysis and Impact pages require Neo4j."
+        )
+
     logger.info("DevBrain API started")
 
 
 @app.on_event("shutdown")
 async def shutdown_event() -> None:
+    global _stop_event, _worker_task
+    
+    # Stop worker loop
+    if _stop_event:
+        _stop_event.set()
+    if _worker_task:
+        try:
+            await asyncio.wait_for(_worker_task, timeout=10.0)
+        except asyncio.TimeoutError:
+            _worker_task.cancel()
+    
     await close_redis()
+    await close_driver()
     logger.info("DevBrain API shutting down")
 
 

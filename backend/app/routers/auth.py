@@ -152,6 +152,11 @@ async def github_callback(
     await db.flush()
 
     response = RedirectResponse(url=f"{settings.frontend_url}/dashboard", status_code=302)
+    
+    # For localhost development, set domain to allow cookie sharing across ports
+    # In production, this should be set to the actual domain
+    cookie_domain = "localhost" if settings.environment == "development" else None
+    
     response.set_cookie(
         key="session_token",
         value=raw_token,
@@ -159,16 +164,16 @@ async def github_callback(
         samesite="lax",
         max_age=SESSION_MAX_AGE,
         secure=settings.environment != "development",
-        # Host-only cookie. Forcing Domain=localhost while the callback is served
-        # from 127.0.0.1 makes the browser reject the cookie (domain mismatch).
-        domain=None,
+        domain=cookie_domain,
         path="/",
     )
     logger.info(
-        "[OAuth] session cookie set for user_id=%s token_hash=%s… callback_host=%s",
+        "[OAuth] session cookie set for user_id=%s token_hash=%s… frontend_url=%s app_url=%s domain=%s",
         user.id,
         hash_token(raw_token)[:12],
+        settings.frontend_url,
         settings.app_url,
+        cookie_domain,
     )
     return response
 

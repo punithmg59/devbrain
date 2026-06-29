@@ -1,20 +1,14 @@
 import logging
 from uuid import UUID
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.models import Repo, User
+from app.models import Repo, User, AnalysisJob
 from app.schemas.analysis import AnalysisStatusResponse, AnalysisTriggerResponse
 from app.schemas.repo import RepoResponse
-from app.services.analysis import (
-    is_analysis_running,
-    is_stale_in_progress,
-    recover_stale_analysis,
-    run_repo_analysis,
-)
 from app.utils.auth import get_current_user
 
 logger = logging.getLogger(__name__)
@@ -43,35 +37,43 @@ async def _get_user_repo(
 @router.post("/api/repos/{repo_id}/analyze", response_model=AnalysisTriggerResponse)
 async def trigger_analysis(
     repo_id: str,
-    background_tasks: BackgroundTasks,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> AnalysisTriggerResponse:
     repo = await _get_user_repo(repo_id, current_user, db)
 
-    if is_stale_in_progress(repo):
-        await recover_stale_analysis(db, repo)
+    # Check for an already-active job
+    existing_job = (await db.execute(
+        select(AnalysisJob)
+        .where(AnalysisJob.repo_id == repo.id)
+        .where(AnalysisJob.status.notin_(["completed", "completed_with_warnings", "failed"]))
+        .limit(1)
+    )).scalar_one_or_none()
 
-    if repo.analysis_status in ("analyzing", "queued") and is_analysis_running(repo.id):
+    if existing_job:
         return AnalysisTriggerResponse(
             repo_id=str(repo.id),
-            status=repo.analysis_status,
-            message="Analysis is already in progress",
+            status=existing_job.status,
+            message="Analysis already in progress",
         )
 
-    if repo.analysis_status in ("analyzing", "queued") and not is_analysis_running(repo.id):
-        await recover_stale_analysis(db, repo)
-
+    # Create a new AnalysisJob row
+    job = AnalysisJob(
+        repo_id=repo.id,
+        user_id=current_user.id,
+        status="queued",
+    )
+    db.add(job)
     repo.analysis_status = "queued"
-    await db.flush()
+    await db.commit()
 
-    background_tasks.add_task(run_repo_analysis, repo.id, current_user.id)
-    logger.info("Queued analysis for %s", repo.full_name)
+    logger.info("Queued analysis job %s for %s", job.id, repo.full_name)
 
     return AnalysisTriggerResponse(
         repo_id=str(repo.id),
         status="queued",
-        message="Repository analysis started",
+        message="Analysis queued successfully",
+        job_id=str(job.id),
     )
 
 
@@ -82,8 +84,6 @@ async def get_analysis_status(
     db: AsyncSession = Depends(get_db),
 ) -> AnalysisStatusResponse:
     repo = await _get_user_repo(repo_id, current_user, db)
-    if is_stale_in_progress(repo):
-        await recover_stale_analysis(db, repo)
     return AnalysisStatusResponse(
         repo_id=str(repo.id),
         full_name=repo.full_name,
@@ -93,6 +93,55 @@ async def get_analysis_status(
         total_lines=repo.total_lines,
         last_analyzed_at=repo.last_analyzed_at,
     )
+
+
+@router.get("/api/repos/{repo_id}/analysis-progress")
+async def get_analysis_progress(
+    repo_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    repo = await _get_user_repo(repo_id, current_user, db)
+
+    # Get the most recent job for this repo
+    job = (await db.execute(
+        select(AnalysisJob)
+        .where(AnalysisJob.repo_id == repo.id)
+        .order_by(AnalysisJob.created_at.desc())
+        .limit(1)
+    )).scalar_one_or_none()
+
+    if not job:
+        # No job yet — repo may have been analyzed before the queue existed
+        return {
+            "status": repo.analysis_status or "unknown",
+            "current_stage": repo.analysis_status or "unknown",
+            "progress_percent": 100.0 if repo.analysis_status == "completed" else 0.0,
+            "files_processed": 0,
+            "files_total": getattr(repo, "total_files", 0) or 0,
+            "functions_found": getattr(repo, "total_functions", 0) or 0,
+            "nodes_count": 0,
+            "edges_count": 0,
+            "files_failed": 0,
+            "warnings": [],
+            "duration_seconds": None,
+            "job_id": None,
+        }
+
+    return {
+        "status": job.status,
+        "current_stage": job.current_stage,
+        "progress_percent": round(job.progress_percent, 1),
+        "files_processed": job.files_processed,
+        "files_total": job.files_total,
+        "functions_found": job.functions_found,
+        "nodes_count": job.nodes_count,
+        "edges_count": job.edges_count,
+        "files_failed": job.files_failed,
+        "warnings": job.warnings or [],
+        "duration_seconds": job.duration_seconds,
+        "job_id": str(job.id),
+    }
 
 
 @router.get("/api/repos/{repo_id}", response_model=RepoResponse)
