@@ -2,11 +2,9 @@ import { Link, useLocation } from "react-router-dom";
 import {
   LayoutDashboard,
   FolderTree,
-  BrainCircuit,
   Radar,
   Network,
-  BookOpen,
-  Zap,
+  RefreshCw,
   type LucideIcon,
 } from "lucide-react";
 
@@ -44,12 +42,6 @@ export default function WorkspaceNav({ repoId, repoName }: WorkspaceNavProps) {
       match: (p) => p === `/repos/${repoId}`,
     },
     {
-      label: "Project Brain",
-      to: `/repos/${repoId}/project-brain`,
-      icon: BrainCircuit,
-      match: (p) => p.endsWith("/project-brain"),
-    },
-    {
       label: "Impact Radar",
       to: `/repos/${repoId}/impact`,
       icon: Radar,
@@ -62,16 +54,10 @@ export default function WorkspaceNav({ repoId, repoName }: WorkspaceNavProps) {
       match: (p) => p === `/repos/${repoId}/architecture`,
     },
     {
-      label: "Intelligence",
-      to: `/repos/${repoId}/architecture/intelligence`,
-      icon: Zap,
-      match: (p) => p.endsWith("/architecture/intelligence"),
-    },
-    {
-      label: "Story Mode",
-      to: `/repos/${repoId}/architecture/story`,
-      icon: BookOpen,
-      match: (p) => p.endsWith("/architecture/story"),
+      label: "Re-analyze",
+      to: `/repos/${repoId}`,
+      icon: RefreshCw,
+      match: (p) => p === `/repos/${repoId}`,
     },
   ];
 

@@ -6,7 +6,6 @@
 import API from "./authService";
 import type {
   ApiRoutes,
-  BatchSummarize,
   FileDetail,
   FileTreeNode,
   NodeSummary,
@@ -138,14 +137,6 @@ export async function summarizeNode(
   }
 }
 
-export async function summarizeAll(repoId: string): Promise<BatchSummarize> {
-  try {
-    const res = await API.post(`/api/repos/${repoId}/summarize-all`);
-    return res.data;
-  } catch (err: any) {
-    throw new Error(err.response?.data?.detail ?? "Failed to start batch summarization");
-  }
-}
 
 // ── Project Brain ──────────────────────────────────────────────
 

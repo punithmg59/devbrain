@@ -393,3 +393,55 @@ export interface ImpactReportV2 {
   evidence_count: number
 }
 
+export interface AffectedNode {
+  id: string
+  name: string
+  node_type: string
+  file_path: string
+  risk_score: number
+  depth: number
+  direction: 'upstream' | 'downstream'
+  edge_type: string
+  inclusion_reason?: string
+  risk_level?: string
+}
+
+export interface NodeSearchResult {
+  id: string
+  name: string
+  node_type: string
+  file_path: string
+  score: number
+}
+
+export interface Recommendation {
+  title: string
+  priority: 'critical' | 'high' | 'medium' | 'low'
+  description: string
+}
+
+export interface ImpactHistoryItem {
+  id: string
+  query: string
+  timestamp: string
+  risk_score: number
+}
+
+export interface RiskScore {
+  total: number
+  level: 'safe' | 'low' | 'medium' | 'high' | 'critical'
+  breakdown: Record<string, number>
+}
+
+export interface ImpactResultV3 {
+  query: string
+  resolved_node: NodeSearchResult | null
+  affected_nodes: AffectedNode[]
+  risk_score: number
+  analysis_time_ms: number
+  node_id?: string
+  node_name?: string
+  node_type?: string
+  graph_edges?: any[]
+}
+

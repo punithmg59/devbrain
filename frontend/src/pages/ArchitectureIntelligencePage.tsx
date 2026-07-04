@@ -4,7 +4,6 @@ import {
   AlertTriangle,
   Zap,
   Activity,
-  Layers,
   Repeat,
   Target,
   ShieldAlert,

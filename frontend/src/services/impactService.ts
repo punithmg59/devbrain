@@ -83,4 +83,41 @@ export const impactService = {
     })
     return res.data
   },
+
+  async getTopImpactNodes(
+    repoId: string,
+    config?: AxiosRequestConfig
+  ): Promise<any[]> {
+    const res = await API.get(`/api/repos/${repoId}/impact/top-nodes`, config)
+    return res.data
+  },
+
+  async getImpactHistory(
+    repoId: string,
+    config?: AxiosRequestConfig
+  ): Promise<any[]> {
+    const res = await API.get(`/api/repos/${repoId}/impact/history`, config)
+    return res.data
+  },
+
+  async analyzeImpactV3(
+    nodeId: string,
+    repoId: string,
+    config?: AxiosRequestConfig
+  ): Promise<any> {
+    const res = await API.post(`/api/repos/${repoId}/impact/v3`, { node_id: nodeId }, config)
+    return res.data
+  },
+
+  async searchImpactNodes(
+    repoId: string,
+    query: string,
+    config?: AxiosRequestConfig
+  ): Promise<any[]> {
+    const res = await API.get(`/api/repos/${repoId}/impact/search-nodes`, {
+      ...config,
+      params: { q: query },
+    })
+    return res.data
+  },
 }

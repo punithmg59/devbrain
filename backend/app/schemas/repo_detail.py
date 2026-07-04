@@ -245,11 +245,6 @@ class ApiRoutesResponse(BaseModel):
     total: int
     model_config = ConfigDict(from_attributes=True)
 
-class BatchSummarizeResponse(BaseModel):
-    message: str
-    nodes_to_process: int
-    model_config = ConfigDict(from_attributes=True)
-
 
 # ── Impact Radar V2 ──────────────────────────────────
 

@@ -27,7 +27,6 @@ import {
   getNodes,
   getRepoDetail,
   getRepoStats,
-  summarizeAll,
   summarizeNode,
 } from "../services/repoDetailService";
 import { repoService } from "../services/repoService";
@@ -349,7 +348,6 @@ export default function RepoDetailPage() {
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
   const [treeSearch, setTreeSearch] = useState("");
-  const [summarizingAll, setSummarizingAll] = useState(false);
 
   // ── Functions tab state ──────────────────────────────────────
   const [funcSearch, setFuncSearch] = useState("");
@@ -488,18 +486,6 @@ export default function RepoDetailPage() {
       refetchRepo();
     } catch {
       // silent
-    }
-  };
-
-  const handleSummarizeAll = async () => {
-    if (!repoId) return;
-    setSummarizingAll(true);
-    try {
-      await summarizeAll(repoId);
-    } catch {
-      // silent
-    } finally {
-      setSummarizingAll(false);
     }
   };
 
@@ -824,13 +810,6 @@ export default function RepoDetailPage() {
                   {isAnalyzed(repo.analysis_status) && (
                     <>
                       <Link
-                        to={`/repos/${repoId}/project-brain`}
-                        className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-gradient-to-r from-purple-600/20 to-blue-600/20 text-blue-400 border border-blue-700/30 hover:bg-blue-900/30 rounded-lg transition-colors"
-                      >
-                        <Zap className="w-3.5 h-3.5" />
-                        Project Brain
-                      </Link>
-                      <Link
                         to={`/repos/${repoId}/impact`}
                         className="flex items-center gap-1.5 px-3 py-1.5 text-sm border border-purple-600 text-purple-400 hover:bg-purple-900/30 rounded-lg transition-colors"
                       >
@@ -852,18 +831,6 @@ export default function RepoDetailPage() {
                   >
                     <RefreshCw className="w-3.5 h-3.5" />
                     Re-analyze
-                  </button>
-                  <button
-                    onClick={handleSummarizeAll}
-                    disabled={summarizingAll}
-                    className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-purple-600/20 text-purple-400 border border-purple-700/30 rounded-lg hover:bg-purple-600/30 disabled:opacity-50 transition-colors"
-                  >
-                    {summarizingAll ? (
-                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    ) : (
-                      <Sparkles className="w-3.5 h-3.5" />
-                    )}
-                    Summarize All
                   </button>
                 </div>
               </div>
