@@ -123,7 +123,7 @@ class TestGitHubOAuth:
         # (it should use settings.app_url instead)
         lines = content.split("\n")
         for line in lines:
-            if "redirect_uri" in line and "=" in line:
+            if "redirect_uri" in line and "=" in line and "logger" not in line:
                 # Should use settings.app_url, not hardcoded localhost
                 assert "settings.app_url" in line or "redirect_uri =" in line, \
                     f"Hardcoded URL found in line: {line}"

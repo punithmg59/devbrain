@@ -122,13 +122,13 @@ export default function ImpactPageV3() {
               <>
                 <RiskScoreDial
                   score={result.risk_score}
-                  blastRadius={result.blast_radius}
-                  effortLabel={result.effort_estimate.label}
+                  blastRadius={result.blast_radius ?? 0}
+                  effortLabel={result.effort_estimate?.label ?? 'Medium effort'}
                 />
                 <AffectedNodesList
-                  affectedApis={result.affected_apis}
-                  affectedServices={result.affected_services}
-                  affectedTables={result.affected_tables}
+                  affectedApis={result.affected_apis ?? []}
+                  affectedServices={result.affected_services ?? []}
+                  affectedTables={result.affected_tables ?? []}
                   affectedNodes={result.affected_nodes}
                   onNodeClick={handleNodeClick}
                 />
@@ -147,7 +147,7 @@ export default function ImpactPageV3() {
                         className="w-full text-left p-3 rounded-lg bg-white/5 hover:bg-white/10 transition-colors"
                       >
                         <div className="text-sm font-medium text-white truncate">{node.name}</div>
-                        <div className="text-xs text-gray-500 mt-1">Blast radius: {node.blast_radius}</div>
+                        <div className="text-xs text-gray-500 mt-1">Blast radius: {node.blast_radius ?? 0}</div>
                       </button>
                     ))}
                   </div>

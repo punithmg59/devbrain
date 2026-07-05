@@ -14,7 +14,15 @@ export const authService = {
     try {
       const res = await API.get("/api/auth/me");
       return res.data;
-    } catch {
+    } catch (err: any) {
+      if (import.meta.env.DEV && err?.response?.status === 401) {
+        try {
+          const devRes = await API.post("/api/auth/dev-login");
+          return devRes.data;
+        } catch {
+          return null;
+        }
+      }
       return null;
     }
   },
@@ -22,6 +30,15 @@ export const authService = {
   logout: async () => {
     await API.post("/api/auth/logout");
     window.location.href = "/";
+  },
+
+  checkGitHubToken: async () => {
+    try {
+      const res = await API.get("/api/auth/github-token-status");
+      return res.data.has_token;
+    } catch {
+      return false;
+    }
   },
 };
 

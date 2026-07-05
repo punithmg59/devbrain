@@ -412,12 +412,14 @@ export interface NodeSearchResult {
   node_type: string
   file_path: string
   score: number
+  blast_radius?: number
 }
 
 export interface Recommendation {
   title: string
   priority: 'critical' | 'high' | 'medium' | 'low'
   description: string
+  body?: string
 }
 
 export interface ImpactHistoryItem {
@@ -425,20 +427,32 @@ export interface ImpactHistoryItem {
   query: string
   timestamp: string
   risk_score: number
+  node_name?: string
+  node_type?: string
+  risk_level?: string
+  created_at?: string
 }
 
 export interface RiskScore {
   total: number
   level: 'safe' | 'low' | 'medium' | 'high' | 'critical'
   breakdown: Record<string, number>
+  value?: number
+  explanation?: string
 }
 
 export interface ImpactResultV3 {
   query: string
   resolved_node: NodeSearchResult | null
   affected_nodes: AffectedNode[]
-  risk_score: number
+  risk_score: number | RiskScore
   analysis_time_ms: number
+  blast_radius?: number
+  effort_estimate?: { label?: string }
+  affected_apis?: AffectedNode[]
+  affected_services?: AffectedNode[]
+  affected_tables?: AffectedNode[]
+  recommendations?: Recommendation[]
   node_id?: string
   node_name?: string
   node_type?: string

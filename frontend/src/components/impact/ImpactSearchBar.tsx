@@ -169,8 +169,8 @@ export function ImpactSearchBar({ repoId, onAnalyze, isAnalyzing }: Props) {
                 </span>
                 <span className="flex-1 text-left text-sm font-medium truncate">{node.name}</span>
                 <span className="text-xs text-gray-500 truncate max-w-32">{node.file_path}</span>
-                <span className={`px-2 py-0.5 rounded text-xs font-medium border ${getBlastRadiusColor(node.blast_radius)}`}>
-                  {node.blast_radius}
+                <span className={`px-2 py-0.5 rounded text-xs font-medium border ${getBlastRadiusColor(node.blast_radius ?? 0)}`}>
+                  {node.blast_radius ?? 0}
                 </span>
               </button>
             ))

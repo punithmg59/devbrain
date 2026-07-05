@@ -44,6 +44,7 @@ import NodeDetailPanel from "../components/NodeDetailPanel";
 import LoadingSpinner from "../components/LoadingSpinner";
 import EmptyState from "../components/EmptyState";
 import ErrorState from "../components/ErrorState";
+import WorkspacePage from "./WorkspacePage";
 
 // ── Extension color map ─────────────────────────────────────────
 
@@ -337,7 +338,7 @@ function HttpBadge({ method }: { method: string | null }) {
 // Main Page
 // ═══════════════════════════════════════════════════════════════
 
-type Tab = "overview" | "functions" | "routes" | "stats";
+type Tab = "overview" | "functions" | "routes" | "stats" | "change-intelligence";
 
 export default function RepoDetailPage() {
   const { repoId } = useParams<{ repoId: string }>();
@@ -600,6 +601,7 @@ export default function RepoDetailPage() {
     { key: "functions", label: "Functions", icon: <Code2 className="w-4 h-4" /> },
     { key: "routes", label: "API Routes", icon: <Globe className="w-4 h-4" /> },
     { key: "stats", label: "Stats", icon: <LayoutList className="w-4 h-4" /> },
+    { key: "change-intelligence", label: "AI Change Intelligence", icon: <Sparkles className="w-4 h-4" /> },
   ];
 
   // Grouped API routes
@@ -1030,6 +1032,18 @@ export default function RepoDetailPage() {
                   ))}
                 </div>
               )}
+            </div>
+          )}
+
+          {/* ── Tab: AI Change Intelligence ─────────────────── */}
+          {activeTab === "change-intelligence" && (
+            <div className="space-y-6">
+              <div className="rounded-2xl border border-gray-800 bg-gray-950/60 p-4">
+                <p className="text-sm text-gray-400">
+                  Use the repository context below to ask targeted change-intelligence questions.
+                </p>
+              </div>
+              <WorkspacePage repoId={repoId} />
             </div>
           )}
 

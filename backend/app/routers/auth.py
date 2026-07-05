@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 from urllib.parse import urlencode
 
 import httpx
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse, RedirectResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -27,6 +27,32 @@ GITHUB_USER_URL = "https://api.github.com/user"
 GITHUB_EMAILS_URL = "https://api.github.com/user/emails"
 
 SESSION_MAX_AGE = 2592000  # 30 days
+
+
+async def create_dev_session(db: AsyncSession) -> tuple[User, str]:
+    result = await db.execute(select(User).where(User.github_id == "dev-user"))
+    user = result.scalar_one_or_none()
+
+    if user is None:
+        user = User(
+            github_id="dev-user",
+            username="dev-user",
+            email="dev@example.com",
+            avatar_url=None,
+            plan="FREE",
+        )
+        db.add(user)
+        await db.flush()
+
+    raw_token = create_session_token()
+    session = Session(
+        user_id=user.id,
+        token=hash_token(raw_token),
+        expires_at=datetime.now(timezone.utc) + timedelta(seconds=SESSION_MAX_AGE),
+    )
+    db.add(session)
+    await db.flush()
+    return user, raw_token
 
 
 @router.get("/api/auth/github")
@@ -173,6 +199,34 @@ async def github_callback(
     return response
 
 
+@router.post("/api/auth/dev-login", response_model=UserResponse)
+async def dev_login(db: AsyncSession = Depends(get_db)) -> tuple[User, str] | JSONResponse:
+    if settings.environment != "development":
+        raise HTTPException(status_code=404, detail="Development login is unavailable")
+
+    user, raw_token = await create_dev_session(db)
+    response = JSONResponse(content={
+        "id": str(user.id),
+        "github_id": user.github_id,
+        "username": user.username,
+        "email": user.email,
+        "avatar_url": user.avatar_url,
+        "plan": user.plan,
+        "created_at": user.created_at.isoformat() if user.created_at else None,
+    })
+    response.set_cookie(
+        key="session_token",
+        value=raw_token,
+        httponly=True,
+        samesite="lax",
+        max_age=SESSION_MAX_AGE,
+        secure=False,
+        domain=None,
+        path="/",
+    )
+    return response
+
+
 @router.get("/api/auth/me", response_model=UserResponse)
 async def get_me(current_user: User = Depends(get_current_user)) -> User:
     return current_user
@@ -197,3 +251,18 @@ async def logout(
     response = JSONResponse(content={"message": "Logged out successfully"})
     response.delete_cookie(key="session_token")
     return response
+
+
+@router.get("/api/auth/github-token-status")
+async def github_token_status(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    from app.utils.github import get_github_token
+    try:
+        await get_github_token(current_user, db)
+        return {"has_token": True}
+    except HTTPException as e:
+        if e.status_code == 401:
+            return {"has_token": False}
+        raise

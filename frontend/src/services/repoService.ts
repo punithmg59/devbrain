@@ -1,4 +1,6 @@
 import API from "./authService";
+import type { CallersResponse } from "../types/callers";
+import type { SimulationRequest, SimulationResult } from "../types/simulation";
 
 export interface ConnectedRepo {
   id: string;
@@ -62,6 +64,23 @@ export const repoService = {
     last_analyzed_at: string | null;
   }> => {
     const res = await API.get(`/api/repos/${repoId}/analysis`);
+    return res.data;
+  },
+
+  getCallers: async (repoId: string, nodeId: string, maxDepth: number = 5): Promise<CallersResponse> => {
+    const res = await API.get(`/api/repos/${repoId}/callers/${nodeId}`, {
+      params: { max_depth: maxDepth }
+    });
+    return res.data;
+  },
+
+  simulateChange: async (request: SimulationRequest): Promise<SimulationResult> => {
+    const res = await API.post(`/api/repos/${request.repo_id}/simulate`, {
+      change_type: request.change_type,
+      target_name: request.target_name,
+      target_type: request.target_type,
+      max_depth: request.max_depth
+    });
     return res.data;
   },
 };

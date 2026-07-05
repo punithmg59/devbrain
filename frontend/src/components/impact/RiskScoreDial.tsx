@@ -3,7 +3,7 @@ import { Zap, Clock } from 'lucide-react'
 import { RiskScore } from '../../types/impact'
 
 interface Props {
-  score: RiskScore
+  score: RiskScore | number
   blastRadius: number
   effortLabel: string
 }
@@ -11,10 +11,14 @@ interface Props {
 export function RiskScoreDial({ score, blastRadius, effortLabel }: Props) {
   const [animatedValue, setAnimatedValue] = useState(0)
 
+  const normalizedScore = typeof score === 'number'
+    ? { total: score, level: 'medium' as const, breakdown: {}, value: score, explanation: 'Risk score generated.' }
+    : score
+
   useEffect(() => {
     const duration = 300
     const start = 0
-    const end = score.value
+    const end = normalizedScore.value ?? normalizedScore.total
     const startTime = performance.now()
 
     const animate = (currentTime: number) => {
@@ -31,7 +35,7 @@ export function RiskScoreDial({ score, blastRadius, effortLabel }: Props) {
     }
 
     requestAnimationFrame(animate)
-  }, [score.value])
+  }, [normalizedScore.value, normalizedScore.total])
 
   const getRiskColors = (level: string) => {
     switch (level.toLowerCase()) {
@@ -73,8 +77,8 @@ export function RiskScoreDial({ score, blastRadius, effortLabel }: Props) {
     }
   }
 
-  const colors = getRiskColors(score.level)
-  const percentage = (score.value / 10) * 100
+  const colors = getRiskColors(normalizedScore.level)
+  const percentage = ((normalizedScore.value ?? normalizedScore.total) / 10) * 100
   const circumference = 2 * Math.PI * 80
   const strokeDashoffset = circumference - (percentage / 100) * circumference
 
@@ -115,7 +119,7 @@ export function RiskScoreDial({ score, blastRadius, effortLabel }: Props) {
               {animatedValue.toFixed(1)}
             </span>
             <span className={`text-sm font-bold uppercase tracking-wider mt-1 ${colors.text}`}>
-              {score.level}
+              {normalizedScore.level}
             </span>
           </div>
         </div>
@@ -134,7 +138,7 @@ export function RiskScoreDial({ score, blastRadius, effortLabel }: Props) {
 
         {/* Explanation */}
         <p className="text-xs text-gray-400 mt-4 text-center max-w-xs leading-relaxed">
-          {score.explanation}
+          {normalizedScore.explanation ?? 'No explanation provided yet.'}
         </p>
       </div>
     </div>

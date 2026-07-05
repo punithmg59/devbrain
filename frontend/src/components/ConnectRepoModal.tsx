@@ -85,9 +85,6 @@ export default function ConnectRepoModal({ open, onClose, onConnected }: Connect
           {error && (
             <div className="mb-4 p-3 bg-red-900/30 border border-red-700 rounded-lg text-sm text-red-300">
               {error}
-              {error.includes("log in again") && (
-                <p className="mt-1 text-xs text-red-400">Log out and sign in with GitHub again.</p>
-              )}
             </div>
           )}
 

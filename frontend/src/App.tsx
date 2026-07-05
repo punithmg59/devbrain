@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 import useAuthStore from "./hooks/useAuthStore";
 import { ToastProvider } from "./components/Toast";
@@ -9,6 +9,8 @@ import RepoDetailPage from "./pages/RepoDetailPage";
 import ImpactRadarPage from "./pages/ImpactRadarPage";
 import ArchitectureExplorerPage from "./pages/ArchitectureExplorerPage";
 import AuthErrorPage from "./pages/AuthErrorPage";
+import GitHubLoginPage from "./pages/GitHubLoginPage";
+import { authService } from "./services/authService";
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const user = useAuthStore((s) => s.user);
@@ -16,6 +18,26 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 
   if (!initialized) return null;
   if (!user) return <Navigate to="/" replace />;
+  return <>{children}</>;
+}
+
+function GitHubTokenCheck({ children }: { children: React.ReactNode }) {
+  const user = useAuthStore((s) => s.user);
+  const [hasToken, setHasToken] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    if (!user) {
+      setHasToken(null);
+      return;
+    }
+    authService.checkGitHubToken()
+      .then(setHasToken)
+      .catch(() => setHasToken(false));
+  }, [user]);
+
+  if (!user) return <>{children}</>;
+  if (hasToken === null) return null;
+  if (!hasToken) return <GitHubLoginPage />;
   return <>{children}</>;
 }
 
@@ -38,46 +60,52 @@ function App() {
 
   return (
     <ToastProvider>
-      <Routes>
-      <Route path="/" element={<HomePage />} />
-      <Route
-        path="/dashboard"
-        element={
-          <ProtectedRoute>
-            <DashboardPage />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/repos/:repoId"
-        element={
-          <ProtectedRoute>
-            <ErrorBoundary>
-              <RepoDetailPage />
-            </ErrorBoundary>
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/repos/:repoId/impact"
-        element={
-          <ProtectedRoute>
-            <ImpactRadarPage />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/repos/:repoId/architecture"
-        element={
-          <ProtectedRoute>
-            <ErrorBoundary>
-              <ArchitectureExplorerPage />
-            </ErrorBoundary>
-          </ProtectedRoute>
-        }
-      />
-      <Route path="/auth/error" element={<AuthErrorPage />} />
-    </Routes>
+      <GitHubTokenCheck>
+        <Routes>
+        <Route path="/" element={<HomePage />} />
+        <Route
+          path="/github-login"
+          element={<GitHubLoginPage />}
+        />
+        <Route
+          path="/dashboard"
+          element={
+            <ProtectedRoute>
+              <DashboardPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/repos/:repoId"
+          element={
+            <ProtectedRoute>
+              <ErrorBoundary>
+                <RepoDetailPage />
+              </ErrorBoundary>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/repos/:repoId/impact"
+          element={
+            <ProtectedRoute>
+              <ImpactRadarPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/repos/:repoId/architecture"
+          element={
+            <ProtectedRoute>
+              <ErrorBoundary>
+                <ArchitectureExplorerPage />
+              </ErrorBoundary>
+            </ProtectedRoute>
+          }
+        />
+        <Route path="/auth/error" element={<AuthErrorPage />} />
+      </Routes>
+      </GitHubTokenCheck>
     </ToastProvider>
   );
 }

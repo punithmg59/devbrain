@@ -90,7 +90,7 @@ export function RecommendationsPanel({ recommendations, history, isLoading }: Pr
                   <div className={`w-2 h-2 rounded-full mt-1.5 ${getPriorityColor(rec.priority)}`} />
                   <div className="flex-1">
                     <h4 className="text-sm font-medium text-white">{rec.title}</h4>
-                    <p className="text-xs text-white/60 mt-1">{rec.body}</p>
+                    <p className="text-xs text-white/60 mt-1">{rec.body ?? rec.description ?? ""}</p>
                   </div>
                 </div>
               </div>
@@ -119,18 +119,18 @@ export function RecommendationsPanel({ recommendations, history, isLoading }: Pr
               >
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium text-white">{item.node_name}</span>
-                    <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium border ${getRiskLevelColor(item.risk_level)}`}>
-                      {item.node_type}
+                    <span className="text-sm font-medium text-white">{item.node_name ?? item.query ?? "Unknown"}</span>
+                    <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium border ${getRiskLevelColor(item.risk_level ?? "medium")}`}>
+                      {item.node_type ?? "unknown"}
                     </span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium border ${getRiskLevelColor(item.risk_level)}`}>
-                      {item.risk_level}
+                    <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium border ${getRiskLevelColor(item.risk_level ?? "medium")}`}>
+                      {item.risk_level ?? "medium"}
                     </span>
                     <div className="flex items-center gap-1 text-gray-500">
                       <Clock className="w-3 h-3" />
-                      <span className="text-[10px]">{formatTimeAgo(item.created_at)}</span>
+                      <span className="text-[10px]">{formatTimeAgo(item.created_at ?? item.timestamp ?? "")}</span>
                     </div>
                   </div>
                 </div>

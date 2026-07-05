@@ -13,6 +13,7 @@ from app.routers import (
     analysis,
     architecture,
     auth,
+    change_intelligence,
     flows,
     impact,
     repo_detail,
@@ -54,6 +55,7 @@ app.include_router(workflows.router, prefix="", tags=["workflows"])
 app.include_router(architecture.router, prefix="", tags=["architecture"])
 app.include_router(intelligence.router, prefix="", tags=["intelligence"])
 app.include_router(flows.router, prefix="", tags=["flows"])
+app.include_router(change_intelligence.router, prefix="", tags=["change-intelligence"])
 
 
 # ── Exception handlers ─────────────────────────────────────────
