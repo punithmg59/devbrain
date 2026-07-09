@@ -7,7 +7,7 @@ Generates deterministic recommendations, required tests, and alternative options
 from typing import Tuple, List, Dict, Any
 
 from app.services.intent.schemas import Intent
-from app.services.repository_intelligence.schemas import EngineeringEvidence, EvidenceCategory
+from app.services.engineering_evidence.models import EngineeringEvidence
 from app.services.reasoning.schemas.engineering_decision import DecisionType
 
 
@@ -37,12 +37,12 @@ class RecommendationEngine:
                 actions.append("Review dependent services and assess migration effort.")
             else:
                 actions.append("Remove the component from the codebase.")
-                if evidence.has_callers or evidence.evidence.get(EvidenceCategory.DEPENDENT):
+                if evidence.total_references > 0:
                     actions.append("Replace or remove all upstream dependencies/callers.")
         
         elif intent_val == "RENAME":
             actions.append("Update all direct references to the component.")
-            if evidence.has_database:
+            if evidence.database and evidence.database.reference_count > 0:
                 actions.append("Create a database migration script for renamed models/tables.")
                 tests.append("Verify data integrity post-migration.")
                 alternatives.append("Use an alias to map the old name to the new name without breaking consumers.")
@@ -50,7 +50,7 @@ class RecommendationEngine:
         elif intent_val in ["ADD_FEATURE", "PLANNING"]:
             actions.append("Define the API contracts before implementation.")
             actions.append("Implement the feature within the recommended module boundary.")
-            if evidence.has_database:
+            if evidence.database and evidence.database.reference_count > 0:
                 actions.append("Design new database schema changes.")
             alternatives.append("Extend an existing component instead of creating a new one.")
 
@@ -64,18 +64,18 @@ class RecommendationEngine:
             tests.append("Ensure 100% test coverage of existing behavior before refactoring.")
 
         # 2. Evidence-based dynamic recommendations
-        if evidence.has_apis:
+        if evidence.public_api and evidence.public_api.reference_count > 0:
             actions.append("Update API documentation and OpenAPI schemas.")
             tests.append("Verify API contracts with integration tests.")
             
-        if evidence.has_database:
+        if evidence.database and evidence.database.reference_count > 0:
             tests.append("Run database integration tests.")
             
-        if evidence.has_workflows:
-            actions.append("Verify impacted workflows continue to function as expected.")
-            tests.append("Execute end-to-end (E2E) workflow tests.")
+        if evidence.runtime and evidence.runtime.reference_count > 0:
+            actions.append("Verify impacted runtime dependencies continue to function as expected.")
+            tests.append("Execute end-to-end (E2E) integration tests.")
             
-        if not evidence.has_tests:
+        if not evidence.testing or evidence.testing.reference_count == 0:
             tests.append(f"Write unit tests for {evidence.target_name}.")
 
         return actions, tests, alternatives

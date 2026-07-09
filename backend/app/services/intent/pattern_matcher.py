@@ -38,7 +38,18 @@ class PatternMatcher:
         IntentType.RENAME: [
             r'\brename\s+(.+?)\s+(?:to|as)\s+(.+?)\b',
             r'\bchange\s+(?:the\s+)?name\s+of\s+(.+?)\s+to\s+(.+?)\b',
-            r'\bmove\s+(.+?)\s+to\s+(.+?)\b',
+        ],
+        IntentType.MOVE: [
+            r'\bmove\s+(.+?)\s+(?:to|into)\s+(.+?)\b',
+            r'\b(?:relocate|transfer)\s+(.+?)\s+(?:to|into)\s+(.+?)\b',
+            r'\bmove\s+(.+?)\s+from\s+(.+?)\s+to\s+(.+?)\b',
+        ],
+        IntentType.MODIFY: [
+            r'\bmodify\s+(.+?)\b',
+            r'\bchange\s+(.+?)\b',
+            r'\bupdate\s+(.+?)\b',
+            r'\bedit\s+(.+?)\b',
+            r'\balter\s+(.+?)\b',
         ],
         IntentType.REFACTOR: [
             r'\brefactor\s+(.+?)\b',
@@ -59,11 +70,43 @@ class PatternMatcher:
             r'\bwhat\s+(?:breaks|fails)\s+if\s+(?:i\s+)?(?:delete|change)\s+(.+?)\b',
             r'\bimpact\s+of\s+(?:changing|modifying)\s+(.+?)\b',
         ],
+        IntentType.DEPENDENCY_QUERY: [
+            r'\bwhat\s+(?:are\s+)?(?:the\s+)?dependencies\s+(?:of|for)\s+(.+?)\b',
+            r'\bwhat\s+(?:does\s+)?(.+?)\s+depend\s+on\b',
+            r'\bshow\s+(?:me\s+)?(?:the\s+)?dependencies\s+(?:of|for)\s+(.+?)\b',
+            r'\blist\s+(?:the\s+)?dependencies\s+(?:of|for)\s+(.+?)\b',
+        ],
+        IntentType.REPOSITORY_QUERY: [
+            r'\bwhat\s+(?:is\s+)?(?:in|the)\s+repository\b',
+            r'\bshow\s+(?:me\s+)?(?:the\s+)?repository\b',
+            r'\bwhat\s+(?:files|functions|classes|services)\s+(?:are\s+)?(?:in|the)\s+repository\b',
+            r'\b(?:list|show)\s+(?:all\s+)?(?:files|functions|classes|services)\s+(?:in|the)?\s*repository\b',
+            r'\bwhat\s+(?:are\s+)?(?:the\s+)?main\s+(?:components|modules)\b',
+        ],
         IntentType.ARCHITECTURE: [
             r'\bshow\s+(?:me\s+)?(?:the\s+)?architecture\b',
             r'\bhow\s+(?:is|are)\s+(.+?)\s+(?:connected|structured|organized)\b',
             r'\b(?:visualize|display|draw)\s+(?:the\s+)?(?:architecture|structure)\b',
             r'\bwhat\s+(?:are\s+)?(?:the\s+)?(?:components|modules|services)\s+(?:in|of)\s+(.+?)\b',
+        ],
+        IntentType.ARCHITECTURE_GUIDANCE: [
+            r'\b(?:architecture|design)\s+(?:guidance|advice|recommendations)\s+(?:for|to)\s+(.+?)\b',
+            r'\bbest\s+(?:practice|practices)\s+(?:for|to)\s+(?:design|structure)\s+(.+?)\b',
+            r'\bhow\s+(?:should|i\s+)?(?:design|structure|organize)\s+(.+?)\b',
+            r'\bhow\s+(?:to\s+)?(?:organize|structure)\s+(.+?)\b',
+        ],
+        IntentType.FEATURE_PLANNING: [
+            r'\bfeature\s+(?:plan|planning)\s+(?:for|to)\s+(.+?)\b',
+            r'\bwhat\s+(?:are\s+)?(?:the\s+)?(?:requirements|prerequisites)\s+(?:for|to)\s+(.+?)\b',
+            r'\b(?:steps|approach|strategy)\s+(?:for|to)\s+(?:implement|build)\s+(.+?)\b',
+            r'\bplan\s+(?:for|to)\s+(.+?)\b',
+            r'\bhow\s+(?:do\s+i|should\s+i|to)\s+(?:implement|build|create)\s+(.+?)\b',
+        ],
+        IntentType.REFACTORING_GUIDANCE: [
+            r'\brefactoring\s+(?:guidance|advice|recommendations)\s+(?:for|to)\s+(.+?)\b',
+            r'\b(?:code|design)\s+smell\s+(?:in|for)\s+(.+?)\b',
+            r'\b(?:improvement|optimization)\s+(?:opportunities|suggestions)\s+(?:for|in)\s+(.+?)\b',
+            r'\bhow\s+(?:should|i\s+)?(?:refactor|improve)\s+(.+?)\b',
         ],
         IntentType.PLANNING: [
             r'\bhow\s+(?:do\s+i|should\s+i|to)\s+(?:implement|build|create)\s+(.+?)\b',
@@ -82,11 +125,18 @@ class PatternMatcher:
     # Keywords for quick classification
     INTENT_KEYWORDS = {
         IntentType.DELETE: ['delete', 'remove', 'drop', 'destroy', 'eliminate', 'impact of deleting'],
-        IntentType.RENAME: ['rename', 'change name', 'move to', 'rename to'],
+        IntentType.RENAME: ['rename', 'change name', 'rename to'],
+        IntentType.MOVE: ['move to', 'move', 'relocate', 'transfer'],
+        IntentType.MODIFY: ['modify', 'change', 'update', 'edit', 'alter'],
         IntentType.REFACTOR: ['refactor', 'improve', 'clean up', 'optimize', 'simplify'],
         IntentType.ADD_FEATURE: ['add', 'implement', 'create', 'build', 'add feature'],
         IntentType.DEPENDENCY: ['depend', 'uses', 'calls', 'imports', 'impact of changing', 'what breaks'],
+        IntentType.DEPENDENCY_QUERY: ['dependencies', 'depends on', 'what depends', 'list dependencies'],
+        IntentType.REPOSITORY_QUERY: ['repository', 'in the repository', 'what files', 'what functions', 'what classes', 'list all'],
         IntentType.ARCHITECTURE: ['architecture', 'structure', 'connected', 'components', 'modules', 'visualize'],
+        IntentType.ARCHITECTURE_GUIDANCE: ['design guidance', 'architecture guidance', 'how to design', 'best practices', 'how to structure'],
+        IntentType.FEATURE_PLANNING: ['how to implement', 'plan for', 'steps to', 'approach for', 'strategy for', 'feature plan'],
+        IntentType.REFACTORING_GUIDANCE: ['refactoring guidance', 'how to refactor', 'code smell', 'improvement opportunities', 'optimization suggestions'],
         IntentType.PLANNING: ['how to implement', 'plan for', 'steps to', 'approach for', 'strategy for'],
         IntentType.EXPLAIN: ['what does', 'how does', 'explain', 'describe', 'why does'],
     }

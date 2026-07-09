@@ -256,7 +256,7 @@ export default function ProjectBrainPage() {
                 {high_risk_apis.slice(0, 6).map((api) => (
                   <div
                     key={api.node_id}
-                    onClick={() => navigate(`/repos/${repoId}/impact?q=${encodeURIComponent(api.name)}&scenario=modify`)}
+                    onClick={() => navigate(`/repos/${repoId}`)}
                     className="bg-black/40 border border-[#333] hover:border-orange-500/50 p-4 rounded-xl cursor-pointer transition-all hover:bg-orange-500/5 group"
                   >
                     <div className="text-orange-400 font-mono text-sm truncate mb-1">{api.name}</div>

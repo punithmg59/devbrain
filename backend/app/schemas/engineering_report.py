@@ -3,7 +3,7 @@ from datetime import datetime
 from pydantic import BaseModel, Field
 
 from app.schemas.intent import IntentClassificationResponse
-from app.schemas.evidence import EvidenceResponse
+from app.services.engineering_evidence.models import EngineeringEvidence
 from app.schemas.impact_analysis import ImpactAnalysisResponse
 from app.schemas.recommendation import RecommendationResponse
 
@@ -18,7 +18,7 @@ class EngineeringReport(BaseModel):
     timestamp: datetime = Field(default_factory=datetime.utcnow, description="When the report was generated")
     
     intent: IntentClassificationResponse = Field(..., description="Parsed intent and entity extraction")
-    evidence: Optional[EvidenceResponse] = Field(None, description="Graph evidence collected for the analysis")
+    evidence: Optional[EngineeringEvidence] = Field(None, description="Engineering evidence collected for the analysis")
     impact: Optional[ImpactAnalysisResponse] = Field(None, description="Deterministic impact and blast radius")
     recommendations: Optional[RecommendationResponse] = Field(None, description="Actionable engineering recommendations")
     

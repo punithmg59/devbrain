@@ -17,16 +17,11 @@ class RiskLevel(str, Enum):
 
 
 class DecisionType(str, Enum):
-    DO_NOT_DELETE = "DO_NOT_DELETE"
-    SAFE_TO_DELETE = "SAFE_TO_DELETE"
-    SAFE_WITH_UPDATES = "SAFE_WITH_UPDATES"
-    PROCEED_WITH_CAUTION = "PROCEED_WITH_CAUTION"
-    IMPLEMENT_IN_MODULE = "IMPLEMENT_IN_MODULE"
-    EXPLAIN_ARCHITECTURE = "EXPLAIN_ARCHITECTURE"
-    GENERATE_IMPLEMENTATION_PLAN = "GENERATE_IMPLEMENTATION_PLAN"
-    REFACTOR_SAFE = "REFACTOR_SAFE"
-    REFACTOR_HIGH_RISK = "REFACTOR_HIGH_RISK"
-    RESOLVE_DEPENDENCY = "RESOLVE_DEPENDENCY"
+    SAFE = "SAFE"
+    LOW_IMPACT = "LOW IMPACT"
+    MEDIUM_IMPACT = "MEDIUM IMPACT"
+    HIGH_IMPACT = "HIGH IMPACT"
+    CRITICAL_IMPACT = "CRITICAL IMPACT"
     UNKNOWN = "UNKNOWN"
 
 
@@ -36,32 +31,32 @@ class EngineeringDecision(BaseModel):
     This JSON object is consumed by UI layers and the future Engineering Report layer.
     """
 
-    decision: DecisionType = Field(..., description="The primary decision outcome")
+    # Existing required fields for UI/Report layer
+    decision: DecisionType = Field(..., description="The primary engineering decision")
     risk_level: RiskLevel = Field(..., description="Calculated risk severity")
     risk_score: int = Field(..., ge=0, le=100, description="Numerical risk score (0-100)")
     confidence: float = Field(..., ge=0.0, le=1.0, description="Overall confidence in the decision")
-
+    
     summary: str = Field(..., description="A short summary of the decision")
     primary_reason: str = Field(..., description="The primary reason for this decision")
+    
+    affected_components: List[Dict[str, Any]] = Field(default_factory=list)
+    recommended_actions: List[str] = Field(default_factory=list)
+    alternative_options: List[str] = Field(default_factory=list)
+    required_tests: List[str] = Field(default_factory=list)
+    follow_up_questions: List[str] = Field(default_factory=list)
 
-    affected_components: List[Dict[str, Any]] = Field(
-        default_factory=list,
-        description="Key components affected by this change (name, type, category)"
-    )
-
-    recommended_actions: List[str] = Field(
-        default_factory=list,
-        description="Deterministic recommendations for next steps"
-    )
-    alternative_options: List[str] = Field(
-        default_factory=list,
-        description="Alternative approaches to the proposed intent"
-    )
-    required_tests: List[str] = Field(
-        default_factory=list,
-        description="Tests that must be written or run based on the evidence"
-    )
-    follow_up_questions: List[str] = Field(
-        default_factory=list,
-        description="Intelligent follow-up questions for the user"
-    )
+    # New fields requested by user
+    risk_explanation: str = Field("", description="Explanation of the risk level")
+    component_importance: str = Field("", description="Why the component is important")
+    
+    downstream_dependencies: List[str] = Field(default_factory=list, description="Downstream dependencies")
+    upstream_callers: List[str] = Field(default_factory=list, description="Upstream callers")
+    
+    blast_radius_summary: str = Field("", description="Summary of the blast radius")
+    affected_files: List[str] = Field(default_factory=list, description="Affected files")
+    affected_apis: List[str] = Field(default_factory=list, description="Affected APIs")
+    
+    migration_plan: List[str] = Field(default_factory=list, description="Migration plan steps")
+    testing_checklist: List[str] = Field(default_factory=list, description="Testing checklist")
+    engineering_actions: List[str] = Field(default_factory=list, description="Engineering actions")

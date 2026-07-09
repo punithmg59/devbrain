@@ -463,84 +463,272 @@ async def run_impact_analysis(
     db: AsyncSession,
 ) -> ImpactReportV2:
     """
-    Full Impact Radar V2 pipeline:
-    1. Resolve node
-    2. Graph traversal (BFS, depth ≤ 5)
-    3. Blast radius
-    4. Risk engine (scenario-specific)
-    5. LLM explanation
+    Full Impact Radar V2 pipeline powered by AI Change Intelligence:
+    1. Intent classification
+    2. Entity resolution
+    3. Evidence collection
+    4. Reasoning
+    5. Report composition
     """
+    import time
+    from app.services.intent.intent_engine import IntentEngine
+    from app.services.intent.schemas import IntentRequest
+    from app.services.entity_resolution.entity_resolver import EntityResolver
+    from app.services.engineering_evidence.pipeline_integration import EngineeringEvidenceService
+    from app.services.reasoning.reasoning_engine import ReasoningEngine
+    from app.services.report.report_composer import ReportComposer
+    from app.schemas.repo_detail import BlastRadiusV2, RiskResultV2, AffectedItemV2, ImpactEvidence
+    from app.services.reference_intelligence.models import Reference
+
     start_time = time.time()
 
-    # Step 1: Resolve
-    node, fuzzy_matches = await resolve_node(request.query, repo_id, db)
+    # 1. Intent Engine
+    print("START Intent", flush=True)
+    logger.info("START Intent")
+    intent_engine = IntentEngine()
+    intent_request = IntentRequest(repo_id=str(repo_id), question=request.query)
+    intent_response = intent_engine.classify(intent_request)
+    intent = intent_response.intent
+    print("END Intent", flush=True)
+    logger.info("END Intent")
 
-    if not node:
-        return ImpactReportV2(
-            query=request.query,
-            scenario=request.scenario,
-            fuzzy_matches=fuzzy_matches,
-            blast_radius=BlastRadiusV2(
-                direct_dependents=0, indirect_dependents=0, api_impact=0,
-                database_impact=0, service_impact=0, file_impact=0,
-                auth_impact=0, class_impact=0, total_nodes_affected=0,
-                cycles_detected=0,
-            ),
-            risk=RiskResultV2(score=0, level="Safe", scenario=request.scenario, factors=[]),
-            executive_summary=f"No node found matching '{request.query}'. Try a different name.",
-            analysis_time_ms=int((time.time() - start_time) * 1000),
+    # 2. Entity Resolution
+    print("START Entity Resolution", flush=True)
+    logger.info("START Entity Resolution")
+    entity_resolver = EntityResolver()
+    target_name = intent.target_name
+    target_type = intent.target_type if hasattr(intent, "target_type") else "unknown"
+    if hasattr(target_type, "value"):
+        target_type = target_type.value
+
+    _needs_resolution = (
+        not target_name
+        or target_name.lower() == "unknown"
+        or target_name.strip() == request.query.strip()
+    )
+
+    if _needs_resolution:
+        try:
+            node, action, resolution = await entity_resolver.resolve_with_action(
+                db=db,
+                repo_id=str(repo_id),
+                query=request.query,
+            )
+            if resolution.success and node:
+                target_name = node.name
+                target_type = node.node_type.value if hasattr(node.node_type, "value") else str(node.node_type)
+        except Exception as exc:
+            logger.warning("Entity resolution failed: %s", exc)
+    print("END Entity Resolution", flush=True)
+    logger.info("END Entity Resolution")
+
+    # 3. Engineering Evidence
+    print("START Evidence", flush=True)
+    logger.info("START Evidence")
+    evidence_service = EngineeringEvidenceService()
+    evidence = await evidence_service.generate_evidence(
+        repo_id=repo_id,
+        target_name=target_name,
+        target_type=target_type,
+        db=db,
+    )
+    print("END Evidence", flush=True)
+    logger.info("END Evidence")
+
+    # 3b. Evidence Validation Gate
+    print(f"  Evidence confidence: {evidence.evidence_confidence:.2f}", flush=True)
+    print(f"  AST nodes:          {len(evidence.ast_nodes)}", flush=True)
+    print(f"  Dependency edges:   {evidence.dependency_graph.total_edges if evidence.dependency_graph else 0}", flush=True)
+    print(f"  Functions:          {len(evidence.functions)}", flush=True)
+    print(f"  Classes:            {len(evidence.classes)}", flush=True)
+    print(f"  Imports:            {len(evidence.imports)}", flush=True)
+    print(f"  API routes:         {len(evidence.api_routes)}", flush=True)
+    logger.info(
+        "Evidence summary: confidence=%.2f, ast=%d, deps=%d, funcs=%d, classes=%d, imports=%d, routes=%d",
+        evidence.evidence_confidence,
+        len(evidence.ast_nodes),
+        evidence.dependency_graph.total_edges if evidence.dependency_graph else 0,
+        len(evidence.functions),
+        len(evidence.classes),
+        len(evidence.imports),
+        len(evidence.api_routes),
+    )
+
+    # 4. Reasoning Engine
+    print("START Reasoning", flush=True)
+    logger.info("START Reasoning")
+    reasoning_engine = ReasoningEngine()
+    decision = reasoning_engine.reason(intent, evidence)
+    print("END Reasoning", flush=True)
+    logger.info("END Reasoning")
+
+    # 5. Report Composer
+    print("START Report Composer", flush=True)
+    logger.info("START Report Composer")
+    report_composer = ReportComposer()
+    report = report_composer.compose(intent, decision, evidence)
+    print("END Report Composer", flush=True)
+    logger.info("END Report Composer")
+
+    # 10. Print the executed pipeline for every request
+    executed_pipeline = "Executed Pipeline: Intent Engine -> Entity Resolution -> Engineering Evidence -> Reasoning Engine -> Report Composer"
+    print(executed_pipeline, flush=True)
+    logger.info(executed_pipeline)
+
+    # ── Map pipeline outputs to ImpactReportV2 fields ──
+    
+    # 5.1 Helper to convert Reference to AffectedItemV2
+    def map_reference_to_affected_item(ref: Reference) -> AffectedItemV2:
+        return AffectedItemV2(
+            name=ref.consumer or ref.file_path.split("/")[-1] or "unknown",
+            node_type=ref.reference_type.value if hasattr(ref.reference_type, 'value') else str(ref.reference_type),
+            file_path=ref.file_path,
+            evidence=ImpactEvidence(
+                source=ref.consumer or "unknown",
+                target=ref.provider or "unknown",
+                edge_type=ref.reference_type.value if hasattr(ref.reference_type, 'value') else str(ref.reference_type),
+                depth=1,
+                chain=[ref.consumer or "unknown", ref.provider or "unknown"]
+            )
         )
 
-    # Step 2: Graph Traversal
-    traversal = await traverse_graph(node, repo_id, db, max_depth=5)
+    direct_callers = []
+    indirect_callers = []
+    affected_apis = []
+    affected_tables = []
+    affected_services = []
+    affected_classes = []
+    affected_auth = []
+    affected_files_set = set()
 
-    # Step 3: Blast Radius
-    blast = compute_blast_radius(traversal)
+    # Collect all references from all evidence groups
+    all_refs = []
+    groups = [
+        evidence.runtime,
+        evidence.configuration,
+        evidence.infrastructure,
+        evidence.database,
+        evidence.testing,
+        evidence.public_api,
+        evidence.internal_service,
+        evidence.external_dependency
+    ]
+    for grp in groups:
+        if grp and grp.references:
+            all_refs.extend(grp.references)
 
-    # Step 4: Risk Engine
-    risk = compute_risk(request.scenario, blast, imports_count=traversal.imports_count)
+    for ref in all_refs:
+        affected_files_set.add(ref.file_path)
+        item = map_reference_to_affected_item(ref)
+        
+        # Categorize
+        ref_type = ref.reference_type.value if hasattr(ref.reference_type, 'value') else str(ref.reference_type)
+        ref_loc = ref.reference_location.value if hasattr(ref.reference_location, 'value') else str(ref.reference_location)
+        
+        if "route" in ref_type or ref_loc == "runtime":
+            affected_apis.append(item)
+        elif ref_type in ["sql_migration", "orm_model", "foreign_key"] or ref_loc == "database":
+            affected_tables.append(item)
+        elif ref_type in ["class_inheritance", "interface_implementation"]:
+            affected_classes.append(item)
+        elif "auth" in (ref.provider or "").lower() or "auth" in (ref.consumer or "").lower():
+            affected_auth.append(item)
+        elif ref_type == "function_call":
+            if getattr(ref, "depth", 1) > 1:
+                indirect_callers.append(item)
+            else:
+                direct_callers.append(item)
+        else:
+            # Fallback
+            direct_callers.append(item)
+            
+    affected_files = sorted(list(affected_files_set))
 
-    # Build affected items with evidence
-    direct_callers = [_make_affected_item(n, e) for n, e in traversal.direct_callers]
-    indirect_callers = [_make_affected_item(n, e) for n, e in traversal.indirect_callers]
-    affected_apis = [_make_affected_item(n, e) for n, e in traversal.affected_apis]
-    affected_tables = [_make_affected_item(n, e) for n, e in traversal.affected_tables]
-    affected_services = [_make_affected_item(n, e) for n, e in traversal.affected_services]
-    affected_classes = [_make_affected_item(n, e) for n, e in traversal.affected_classes]
-    affected_auth = [_make_affected_item(n, e) for n, e in traversal.affected_auth]
-    affected_files = sorted(traversal.affected_files)
-
-    # Step 5: LLM Explanation
-    llm_result = await generate_llm_explanation(
-        query=request.query,
-        scenario=request.scenario,
-        node_name=node.name,
-        node_type=node.node_type,
-        risk=risk,
-        blast=blast,
-        direct_callers=direct_callers,
-        affected_apis=affected_apis,
-        affected_tables=affected_tables,
-        affected_services=affected_services,
-        affected_auth=affected_auth,
-        affected_files=affected_files,
+    # Construct BlastRadiusV2
+    blast_radius = BlastRadiusV2(
+        direct_dependents=len(direct_callers),
+        indirect_dependents=len(indirect_callers),
+        api_impact=len(affected_apis),
+        database_impact=len(affected_tables),
+        service_impact=len(affected_services),
+        file_impact=len(affected_files),
+        auth_impact=len(affected_auth),
+        class_impact=len(affected_classes),
+        total_nodes_affected=len(all_refs),
+        cycles_detected=0
     )
+
+    # Compute risk factors
+    risk = compute_risk(request.scenario, blast_radius, imports_count=len(evidence.imports))
+    # Overwrite score and level from reasoning engine's decision for consistency
+    risk.score = int(decision.risk_score)
+    risk.level = decision.risk_level.value if hasattr(decision.risk_level, 'value') else str(decision.risk_level)
+
+    # Resolve target file path if possible
+    resolved_file_path = ""
+    for node in evidence.ast_nodes:
+        if node.name == target_name:
+            resolved_file_path = node.file_path
+            break
+    if not resolved_file_path:
+        for cls in evidence.classes:
+            if cls.name == target_name:
+                resolved_file_path = cls.file_path
+                break
+    if not resolved_file_path:
+        for func in evidence.functions:
+            if func.name == target_name:
+                resolved_file_path = func.file_path
+                break
+
+    # Text mapping from EngineeringReport sections
+    summary_text = decision.summary
+    reasoning_text = decision.primary_reason
+    business_impact = list(decision.alternative_options or [])
+    developer_impact = list(decision.recommended_actions or [])
+    recommended_tests = list(decision.required_tests or [])
+    deployment_recommendation = ""
+    rollback_strategy = ""
+
+    for section in report.sections:
+        sec_type = section.type
+        sec_content = section.content
+        if sec_type == "summary":
+            summary_text = sec_content.get("summary", summary_text)
+            reasoning_text = sec_content.get("reasoning", reasoning_text)
+        elif sec_type == "planning":
+            deployment_recommendation = sec_content.get("summary", "")
+            rollback_actions = sec_content.get("actions", [])
+            if rollback_actions:
+                rollback_strategy = "\n".join(f"- {act}" for act in rollback_actions)
+        elif sec_type == "recommendations":
+            if not developer_impact:
+                developer_impact = sec_content.get("actions", [])
+            if not business_impact:
+                business_impact = sec_content.get("alternatives", [])
+        elif sec_type == "tests":
+            if not recommended_tests:
+                recommended_tests = sec_content.get("tests", [])
+
+    if not deployment_recommendation:
+        deployment_recommendation = reasoning_text
+    if not rollback_strategy:
+        if decision.follow_up_questions:
+            rollback_strategy = "\n".join(f"- {q}" for q in decision.follow_up_questions)
+        else:
+            rollback_strategy = "No specific rollback plan required. Follow standard rollback procedures."
 
     elapsed_ms = int((time.time() - start_time) * 1000)
-    evidence_count = (
-        len(direct_callers) + len(indirect_callers) + len(affected_apis)
-        + len(affected_tables) + len(affected_services) + len(affected_auth)
-    )
 
     return ImpactReportV2(
         query=request.query,
         scenario=request.scenario,
-        resolved_node_id=str(node.id),
-        resolved_node_name=node.name,
-        resolved_node_type=node.node_type,
-        resolved_file_path=node.full_path.split(":")[0] if node.full_path else "",
-        fuzzy_matches=fuzzy_matches,
-        blast_radius=blast,
+        resolved_node_id=str(evidence.target_id),
+        resolved_node_name=target_name,
+        resolved_node_type=target_type,
+        resolved_file_path=resolved_file_path,
+        fuzzy_matches=[],
+        blast_radius=blast_radius,
         risk=risk,
         direct_callers=direct_callers,
         indirect_callers=indirect_callers,
@@ -550,13 +738,14 @@ async def run_impact_analysis(
         affected_files=affected_files,
         affected_classes=affected_classes,
         affected_auth=affected_auth,
-        executive_summary=llm_result["executive_summary"],
-        business_impact=llm_result["business_impact"],
-        developer_impact=llm_result["developer_impact"],
-        recommended_tests=llm_result["recommended_tests"],
-        deployment_recommendation=llm_result["deployment_recommendation"],
-        rollback_strategy=llm_result["rollback_strategy"],
+        executive_summary=summary_text,
+        business_impact=business_impact,
+        developer_impact=developer_impact,
+        recommended_tests=recommended_tests,
+        deployment_recommendation=deployment_recommendation,
+        rollback_strategy=rollback_strategy,
         analysis_time_ms=elapsed_ms,
         graph_traversal_depth=5,
-        evidence_count=evidence_count,
+        evidence_count=len(all_refs)
     )
+

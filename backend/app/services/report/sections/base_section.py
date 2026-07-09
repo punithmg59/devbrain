@@ -7,6 +7,7 @@ from typing import Optional
 
 from app.services.intent.schemas import Intent
 from app.services.reasoning.schemas.engineering_decision import EngineeringDecision
+from app.services.engineering_evidence.models import EngineeringEvidence
 from app.services.report.schemas.engineering_report import ReportSectionModel
 
 
@@ -28,7 +29,12 @@ class BaseSection(ABC):
         pass
 
     @abstractmethod
-    def build(self, intent: Intent, decision: EngineeringDecision) -> Optional[ReportSectionModel]:
+    def build(
+        self, 
+        intent: Intent, 
+        decision: EngineeringDecision,
+        evidence: Optional[EngineeringEvidence] = None
+    ) -> Optional[ReportSectionModel]:
         """
         Builds the section data model.
         Returns None if the section has no data to display and should be omitted.

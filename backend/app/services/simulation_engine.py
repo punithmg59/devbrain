@@ -8,6 +8,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services.entity_resolution.models import RepositoryNode, TargetType
+from app.services.engineering_evidence.models import EngineeringEvidence, Criticality
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +24,8 @@ class ChangeSimulationEngine:
         db: AsyncSession,
         target_node: RepositoryNode,
         change_type: str,
-        max_depth: int = 5
+        max_depth: int = 5,
+        evidence: EngineeringEvidence = None
     ) -> dict[str, Any]:
         """
         Simulate the effects of a change to a target component.
@@ -33,6 +35,7 @@ class ChangeSimulationEngine:
             target_node: Resolved repository node (canonical representation)
             change_type: Type of change (delete, rename, move, extract, add)
             max_depth: Maximum traversal depth
+            evidence: EngineeringEvidence for enhanced simulation (optional)
 
         Returns:
             Simulation result dictionary
@@ -57,15 +60,25 @@ class ChangeSimulationEngine:
         # Generate timeline
         timeline = self._generate_timeline(change_type, target_node, affected_nodes)
 
-        # Calculate risk level
-        risk_level, confidence = self._calculate_risk_level(
-            change_type, impact_metrics, cascade_chains, affected_nodes
-        )
+        # Calculate risk level - use evidence if available for more accurate assessment
+        if evidence:
+            risk_level, confidence = self._calculate_risk_level_from_evidence(
+                change_type, evidence, impact_metrics, cascade_chains
+            )
+        else:
+            risk_level, confidence = self._calculate_risk_level(
+                change_type, impact_metrics, cascade_chains, affected_nodes
+            )
 
-        # Generate impact summary
-        impact_summary = self._generate_impact_summary(
-            change_type, target_node, affected_nodes, cascade_chains
-        )
+        # Generate impact summary - use evidence if available
+        if evidence:
+            impact_summary = self._generate_impact_summary_from_evidence(
+                change_type, target_node, evidence, cascade_chains
+            )
+        else:
+            impact_summary = self._generate_impact_summary(
+                change_type, target_node, affected_nodes, cascade_chains
+            )
 
         return {
             "change_type": change_type,
@@ -87,7 +100,148 @@ class ChangeSimulationEngine:
                     "critical": n.get("depth", 0) == 1
                 }
                 for n in affected_nodes
-            ]
+            ],
+            "evidence_enhanced": evidence is not None
+        }
+
+    def _calculate_risk_level_from_evidence(
+        self,
+        change_type: str,
+        evidence: EngineeringEvidence,
+        impact_metrics: dict[str, int],
+        cascade_chains: list[dict[str, Any]]
+    ) -> tuple[str, float]:
+        """Calculate risk level using EngineeringEvidence for more accurate assessment."""
+        # Base risk from evidence criticality
+        if evidence.overall_criticality == Criticality.CRITICAL:
+            base_risk = 0.85
+        elif evidence.overall_criticality == Criticality.HIGH:
+            base_risk = 0.65
+        elif evidence.overall_criticality == Criticality.MEDIUM:
+            base_risk = 0.45
+        else:
+            base_risk = 0.25
+
+        # Adjust for change type
+        change_type_multipliers = {
+            "delete": 1.2,
+            "rename": 1.0,
+            "move": 0.9,
+            "extract": 0.7,
+            "add": 0.3
+        }
+        base_risk *= change_type_multipliers.get(change_type, 1.0)
+
+        # Adjust for impact score
+        base_risk = base_risk * (0.7 + evidence.overall_impact_score * 0.3)
+
+        # Adjust for cascade severity
+        critical_chains = sum(1 for c in cascade_chains if c["severity"] == "critical")
+        if critical_chains > 0:
+            base_risk += 0.15
+
+        # Cap at 1.0
+        base_risk = min(base_risk, 1.0)
+
+        # Determine risk level
+        if base_risk >= 0.8:
+            risk_level = "critical"
+        elif base_risk >= 0.6:
+            risk_level = "high"
+        elif base_risk >= 0.4:
+            risk_level = "moderate"
+        else:
+            risk_level = "safe"
+
+        # Confidence based on evidence confidence
+        confidence = evidence.evidence_confidence
+        if change_type == "delete":
+            confidence = min(confidence + 0.1, 1.0)
+
+        return risk_level, confidence
+
+    def _generate_impact_summary_from_evidence(
+        self,
+        change_type: str,
+        target_node: RepositoryNode,
+        evidence: EngineeringEvidence,
+        cascade_chains: list[dict[str, Any]]
+    ) -> dict[str, list[str] | str]:
+        """Generate impact summary using EngineeringEvidence."""
+        critical_failures = []
+        potential_runtime_errors = []
+        likely_build_errors = []
+        likely_test_failures = []
+        configuration_impact = []
+
+        # Use evidence groups for detailed analysis
+        if evidence.runtime:
+            if evidence.runtime.criticality == Criticality.CRITICAL:
+                critical_failures.append(
+                    f"Runtime dependencies: {evidence.runtime.critical_count} critical references will cause immediate failures"
+                )
+            elif evidence.runtime.criticality == Criticality.HIGH:
+                potential_runtime_errors.append(
+                    f"Runtime dependencies: {evidence.runtime.high_count} high-risk references may cause errors"
+                )
+            critical_failures.extend(evidence.runtime.risk_drivers)
+
+        if evidence.database:
+            if evidence.database.criticality == Criticality.CRITICAL:
+                critical_failures.append(
+                    f"Database dependencies: {evidence.database.critical_count} critical references risk data corruption"
+                )
+            critical_failures.extend(evidence.database.risk_drivers)
+
+        if evidence.public_api:
+            if evidence.public_api.criticality == Criticality.CRITICAL:
+                critical_failures.append(
+                    f"Public API dependencies: {evidence.public_api.critical_count} critical references will affect external consumers"
+                )
+
+        if evidence.configuration:
+            configuration_impact.extend(evidence.configuration.risk_drivers)
+            if evidence.configuration.reference_count > 0:
+                configuration_impact.append(
+                    f"Configuration files require updates for {evidence.configuration.reference_count} references"
+                )
+
+        if evidence.testing:
+            if change_type == "delete":
+                likely_test_failures.append(
+                    f"Test dependencies: {evidence.testing.reference_count} test references may fail"
+                )
+
+        # Build errors from internal dependencies
+        if evidence.internal_service:
+            if evidence.internal_service.criticality == Criticality.CRITICAL:
+                likely_build_errors.append(
+                    f"Internal service dependencies: {evidence.internal_service.critical_count} critical imports will cause build failures"
+                )
+
+        # Add critical findings from evidence
+        critical_failures.extend(evidence.critical_findings)
+
+        # Deployment risk from evidence
+        if evidence.deployment_risk:
+            deployment_risk = evidence.deployment_risk.description
+        else:
+            critical_count = len(critical_failures)
+            if critical_count > 5:
+                deployment_risk = "High - Multiple critical dependencies affected"
+            elif critical_count > 0:
+                deployment_risk = "Medium - Some critical dependencies affected"
+            else:
+                deployment_risk = "Low - No critical dependencies affected"
+
+        return {
+            "critical_failures": critical_failures[:10],
+            "potential_runtime_errors": potential_runtime_errors[:10],
+            "likely_build_errors": likely_build_errors[:5],
+            "likely_test_failures": likely_test_failures[:5],
+            "configuration_impact": configuration_impact[:5],
+            "deployment_risk": deployment_risk,
+            "recommended_validations": evidence.recommended_validation_steps[:5]
         }
 
     async def _traverse_downstream(

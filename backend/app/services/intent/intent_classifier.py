@@ -140,8 +140,13 @@ class IntentClassifier:
         graph_required_intents = {
             IntentType.DELETE,
             IntentType.DEPENDENCY,
+            IntentType.DEPENDENCY_QUERY,
             IntentType.REFACTOR,
+            IntentType.REFACTORING_GUIDANCE,
             IntentType.ARCHITECTURE,
+            IntentType.ARCHITECTURE_GUIDANCE,
+            IntentType.MOVE,
+            IntentType.MODIFY,
         }
         
         return intent_type in graph_required_intents

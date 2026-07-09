@@ -2,7 +2,8 @@ from pydantic import BaseModel, Field
 from typing import Optional, List, Dict, Any
 from uuid import UUID
 from app.models.intent import Intent
-from app.schemas.evidence import EvidenceResponse, NodeEvidence, WorkflowEvidence
+from app.services.engineering_evidence.models import EngineeringEvidence
+from app.schemas.evidence import NodeEvidence, WorkflowEvidence
 
 
 class ImpactAnalysisRequest(BaseModel):
@@ -12,7 +13,7 @@ class ImpactAnalysisRequest(BaseModel):
     repo_id: UUID = Field(..., description="Repository ID")
     target: str = Field(..., description="Target name")
     target_node_id: Optional[UUID] = Field(None, description="Target node ID if known")
-    evidence: Optional[EvidenceResponse] = Field(None, description="Repository evidence from Evidence Engine")
+    evidence: Optional[EngineeringEvidence] = Field(None, description="Engineering evidence from Engineering Evidence Engine")
     max_depth: int = Field(5, ge=1, le=10, description="Maximum traversal depth for blast radius")
     include_indirect: bool = Field(True, description="Include indirect dependencies")
 

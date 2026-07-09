@@ -2,7 +2,7 @@ from pydantic import BaseModel, Field
 from typing import Optional, List, Dict, Any
 from uuid import UUID
 from app.models.intent import Intent
-from app.schemas.evidence import EvidenceResponse
+from app.services.engineering_evidence.models import EngineeringEvidence
 from app.schemas.impact_analysis import ImpactAnalysisResponse
 
 
@@ -12,7 +12,7 @@ class RecommendationRequest(BaseModel):
     intent: Intent = Field(..., description="The classified intent")
     repo_id: UUID = Field(..., description="Repository ID")
     target: str = Field(..., description="Target name")
-    evidence: Optional[EvidenceResponse] = Field(None, description="Repository evidence from Evidence Engine")
+    evidence: Optional[EngineeringEvidence] = Field(None, description="Engineering evidence from Engineering Evidence Engine")
     impact: Optional[ImpactAnalysisResponse] = Field(None, description="Impact analysis from Impact Analysis Engine")
     include_rollback: bool = Field(True, description="Include rollback plan in recommendations")
     include_tests: bool = Field(True, description="Include test recommendations")

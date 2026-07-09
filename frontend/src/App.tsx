@@ -6,7 +6,6 @@ import ErrorBoundary from "./components/ErrorBoundary";
 import HomePage from "./pages/HomePage";
 import DashboardPage from "./pages/DashboardPage";
 import RepoDetailPage from "./pages/RepoDetailPage";
-import ImpactRadarPage from "./pages/ImpactRadarPage";
 import ArchitectureExplorerPage from "./pages/ArchitectureExplorerPage";
 import AuthErrorPage from "./pages/AuthErrorPage";
 import GitHubLoginPage from "./pages/GitHubLoginPage";
@@ -82,14 +81,6 @@ function App() {
               <ErrorBoundary>
                 <RepoDetailPage />
               </ErrorBoundary>
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/repos/:repoId/impact"
-          element={
-            <ProtectedRoute>
-              <ImpactRadarPage />
             </ProtectedRoute>
           }
         />

@@ -41,6 +41,12 @@ class EntityExtractor:
         ],
         TargetType.FILE: [
             r'\b([a-zA-Z0-9_\-]+\.(py|ts|js|java|go|rs|cpp|h))\b',  # file extensions
+            r'\b([a-zA-Z0-9_\-/]+\.(py|ts|js|java|go|rs|cpp|h))\b',  # file paths with directories
+        ],
+        TargetType.FOLDER: [
+            r'\b([a-zA-Z0-9_\-/]+/)\b',  # folder paths ending with /
+            r'\b([a-zA-Z0-9_\-]+)\s+folder\b',  # auth folder
+            r'\bfolder\s+([a-zA-Z0-9_\-]+)\b',  # folder auth
         ],
         TargetType.API: [
             r'\b([A-Z]+\s+/[a-zA-Z0-9_\-/]+)\b',  # POST /api/users
@@ -62,6 +68,7 @@ class EntityExtractor:
         TargetType.CLASS: ['class', 'object', 'instance'],
         TargetType.FUNCTION: ['function', 'method', 'procedure'],
         TargetType.FILE: ['file', 'document'],
+        TargetType.FOLDER: ['folder', 'directory', 'dir'],
         TargetType.API: ['endpoint', 'route', 'api', 'rest'],
         TargetType.DATABASE_TABLE: ['table', 'collection'],
         TargetType.WORKFLOW: ['workflow', 'pipeline', 'job'],
@@ -119,6 +126,7 @@ class EntityExtractor:
         priority_order = [
             TargetType.SERVICE,
             TargetType.FILE,
+            TargetType.FOLDER,
             TargetType.API,
             TargetType.DATABASE_TABLE,
             TargetType.MODULE,
@@ -242,6 +250,9 @@ class EntityExtractor:
         entities = self.extract(question)
         
         if not entities:
+            # Check for repository-level queries
+            if 'repository' in question.lower():
+                return 'repository', TargetType.REPOSITORY
             return None, None
         
         # Return the entity with highest confidence

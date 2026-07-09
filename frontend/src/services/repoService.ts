@@ -83,4 +83,23 @@ export const repoService = {
     });
     return res.data;
   },
+
+  generateMigrationPlan: async (repoId: string, query?: string, targetName?: string, targetType?: string, changeType?: string): Promise<any> => {
+    const res = await API.post(`/api/repos/${repoId}/migration-plan`, {
+      query,
+      target_name: targetName,
+      target_type: targetType,
+      change_type: changeType
+    });
+    return res.data;
+  },
+
+  generateTestingChecklist: async (repoId: string, query?: string, targetName?: string, targetType?: string): Promise<any> => {
+    const res = await API.post(`/api/repos/${repoId}/testing-checklist`, {
+      query,
+      target_name: targetName,
+      target_type: targetType
+    });
+    return res.data;
+  },
 };

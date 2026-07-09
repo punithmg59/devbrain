@@ -7,11 +7,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.engineering_report import EngineeringReport
 from app.services.intent_engine import IntentEngine
-from app.services.repository_evidence_engine import RepositoryEvidenceEngine
+from app.services.engineering_evidence.pipeline_integration import EngineeringEvidenceService
 from app.services.impact_analysis_engine import ImpactAnalysisEngine
 from app.services.recommendation_engine import RecommendationEngine
 
-from app.schemas.evidence import EvidenceRequest
 from app.schemas.impact_analysis import ImpactAnalysisRequest
 from app.schemas.recommendation import RecommendationRequest
 
@@ -28,12 +27,12 @@ class AIChangePipelineService:
     def __init__(
         self,
         intent_engine: IntentEngine,
-        evidence_engine: RepositoryEvidenceEngine,
+        evidence_service: EngineeringEvidenceService,
         impact_engine: ImpactAnalysisEngine,
         recommendation_engine: RecommendationEngine,
     ):
         self.intent_engine = intent_engine
-        self.evidence_engine = evidence_engine
+        self.evidence_service = evidence_service
         self.impact_engine = impact_engine
         self.recommendation_engine = recommendation_engine
 
@@ -55,21 +54,19 @@ class AIChangePipelineService:
             logger.error(f"IntentEngine failed: {e}", exc_info=True)
             raise RuntimeError(f"Pipeline failed at Intent classification: {e}")
 
-        # 2. Evidence Engine
+        # 2. Engineering Evidence Engine
         t0 = time.perf_counter()
-        evidence_response = None
+        engineering_evidence = None
         try:
             target_name = intent_response.target_name or question
-            evidence_req = EvidenceRequest(
-                intent=intent_response.intent,
+            engineering_evidence = await self.evidence_service.generate_evidence(
                 repo_id=repo_id,
-                target=target_name,
-                max_results=50,
+                target_name=target_name,
+                db=db
             )
-            evidence_response = await self.evidence_engine.collect_evidence(evidence_req, db)
             execution_metrics["evidence_engine_ms"] = (time.perf_counter() - t0) * 1000
         except Exception as e:
-            logger.error(f"EvidenceEngine failed: {e}", exc_info=True)
+            logger.error(f"EngineeringEvidenceService failed: {e}", exc_info=True)
             # Evidence can fail, but we might still try impact if we have target_name
             execution_metrics["evidence_engine_ms"] = (time.perf_counter() - t0) * 1000
 
@@ -77,9 +74,7 @@ class AIChangePipelineService:
         t0 = time.perf_counter()
         impact_response = None
         try:
-            target_node_id = None
-            if evidence_response and evidence_response.target_node:
-                target_node_id = evidence_response.target_node.id
+            target_node_id = engineering_evidence.target_id if engineering_evidence else None
 
             impact_req = ImpactAnalysisRequest(
                 repo_id=repo_id,
@@ -102,7 +97,7 @@ class AIChangePipelineService:
             rec_req = RecommendationRequest(
                 intent=intent_response.intent,
                 target=intent_response.target_name or question,
-                evidence=evidence_response,
+                evidence=engineering_evidence,
                 impact=impact_response,
                 include_tests=True,
                 include_rollback=True,
@@ -119,7 +114,7 @@ class AIChangePipelineService:
         return EngineeringReport(
             question=question,
             intent=intent_response,
-            evidence=evidence_response,
+            evidence=engineering_evidence,
             impact=impact_response,
             recommendations=recommendation_response,
             execution_metrics=execution_metrics,

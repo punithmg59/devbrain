@@ -250,11 +250,11 @@ export default function DashboardPage() {
                       {isAnalyzed(repo.analysis_status) && (
                         <>
                           <Link
-                            to={`/repos/${repo.id}/impact`}
+                            to={`/repos/${repo.id}`}
                             className="hidden sm:flex items-center gap-1 px-3 py-1.5 text-sm border border-purple-600 text-purple-400 hover:bg-purple-900/30 rounded-lg transition-colors"
                           >
                             <Zap className="w-3.5 h-3.5" />
-                            Impact Radar
+                            AI Change Intelligence
                           </Link>
                           <Link
                             to={`/repos/${repo.id}`}

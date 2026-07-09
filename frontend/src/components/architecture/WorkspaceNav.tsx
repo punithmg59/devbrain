@@ -2,7 +2,6 @@ import { Link, useLocation } from "react-router-dom";
 import {
   LayoutDashboard,
   FolderTree,
-  Radar,
   Network,
   RefreshCw,
   type LucideIcon,
@@ -40,12 +39,6 @@ export default function WorkspaceNav({ repoId, repoName }: WorkspaceNavProps) {
       to: `/repos/${repoId}`,
       icon: FolderTree,
       match: (p) => p === `/repos/${repoId}`,
-    },
-    {
-      label: "Impact Radar",
-      to: `/repos/${repoId}/impact`,
-      icon: Radar,
-      match: (p) => p.endsWith("/impact"),
     },
     {
       label: "Architecture",

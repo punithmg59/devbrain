@@ -14,7 +14,7 @@ import { Link } from "react-router-dom";
 const features = [
   {
     icon: Zap,
-    title: "Impact Radar",
+    title: "AI Change Intelligence",
     description:
       "Live now — trace dependency graphs and see what breaks before you ship a change",
   },
