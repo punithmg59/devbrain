@@ -1,236 +1,182 @@
-# 🧠 DevBrain
+# DevBrain
 
-> AI Engineering Intelligence Platform for Modern Software Teams
+> GitHub Copilot helps you write code. DevBrain helps you safely change code.
 
-DevBrain helps engineering teams understand, validate, debug, and evolve software systems built with AI.
+DevBrain is an AI-powered Change Intelligence platform that helps software engineers understand the impact of code changes before they modify a codebase.
 
-Instead of only generating code, DevBrain builds a persistent intelligence layer around your codebase — architecture, dependencies, engineering history, debugging knowledge, and development workflows.
+Instead of simply generating code, DevBrain analyzes repositories, understands architecture, builds dependency graphs, and answers questions like:
 
----
-
-## 🚀 The Problem
-
-AI coding tools make writing code faster.
-
-But they also create new challenges:
-
-- AI-generated technical debt
-- Lost architectural context
-- Difficult debugging
-- Knowledge silos
-- Unsafe code changes
-- Poor system understanding
-
-The tools that generate code do not help teams understand it.
+- What breaks if I remove this function?
+- Which APIs depend on this module?
+- What files should I test after this change?
+- What is the safest migration plan?
+- Which components will be affected?
 
 ---
 
-## 💡 The Solution
+# Why DevBrain?
 
-DevBrain acts as the intelligence layer above AI coding tools.
+Large software projects become difficult to understand over time.
 
-Connect a repository and DevBrain will:
+Developers spend hours answering questions such as:
 
-- Understand your architecture
-- Track dependencies
-- Preserve engineering knowledge
-- Validate AI-generated code
-- Analyze production issues
-- Help teams make safer decisions
+- Where is this function used?
+- What happens if I rename this API?
+- Which services depend on this class?
+- Why did production break after this change?
+
+DevBrain provides engineering intelligence before code changes are made.
 
 ---
 
-## ✨ Core Features
+# Features
 
-### 🧠 Project Brain
-Understand the entire codebase, architecture, APIs, dependencies, and relationships.
+## Repository Analysis
 
-### 🎯 Impact Radar
-Know what breaks before you change anything.
+- Analyze complete GitHub repositories
+- Parse source code using AST
+- Build project architecture
+- Extract functions, classes, APIs and dependencies
 
-### 📚 Engineering Memory
-Store architecture decisions, debugging history, incidents, PR discussions, and engineering knowledge.
+---
 
-### 🤖 Context-Aware Prompt Workspace
-Generate architecture-aware prompts using repository context and engineering memory.
+## AI Change Intelligence
 
-### ✅ AI Output Validator
-Validate AI-generated code for:
+Ask questions like:
 
-- Hallucinations
-- Security risks
-- Scalability issues
-- Architecture mismatches
+> What happens if I delete authentication?
 
-### 🔍 Debugging Intelligence
-Analyze:
+DevBrain explains:
 
-- Logs
-- Stack traces
-- Incidents
+- Impacted files
 - Dependencies
-
-Identify root causes and recommend fixes.
-
-### 📊 Repository Intelligence
-Monitor:
-
-- Repository health
-- Architecture drift
-- Dependency evolution
-- Commits
-- Pull requests
-
-### 🔗 GitHub & CI/CD Intelligence
-Integrate directly with:
-
-- GitHub
-- Pull Requests
-- GitHub Actions
-- CI/CD workflows
-
-### 👥 Team Engineering Workspace
-Shared engineering memory, collaboration, analytics, permissions, and organizational knowledge.
+- Risks
+- Migration strategy
+- Testing checklist
+- Confidence score
 
 ---
 
-## 🏗️ Architecture
+## Architecture Intelligence
 
-```text
-GitHub Repository
-        ↓
-Repository Ingestion
-        ↓
-Tree-sitter Analysis
-        ↓
-Dependency Graph Builder
-        ↓
-Engineering Memory
-        ↓
-Context Retrieval Engine
-        ↓
-Claude / OpenAI
-        ↓
-Engineering Intelligence
-```
+Visualize
+
+- Folder structure
+- Module relationships
+- Service dependencies
+- API connections
 
 ---
 
-## 🛠️ Technology Stack
+## Engineering Memory
 
-### Backend
+Understand
 
-- Python
-- FastAPI
-- PostgreSQL
-- SQLAlchemy
-- Redis
-- Celery
+- Previous architectural decisions
+- Repository history
+- Code relationships
+- Engineering context
 
-### AI Layer
+---
 
-- Claude
-- OpenAI
-- Groq
-- LangChain
-- LangGraph
+## Dependency Graph
 
-### Code Analysis
+Automatically build
 
-- Tree-sitter
-- AST Parsing
-- Dependency Graph Engine
+- Function calls
+- Class relationships
+- Import graph
+- API dependencies
 
-### Frontend
+---
+
+## AI Reports
+
+Generate
+
+- Change reports
+- Risk analysis
+- Migration plans
+- Testing recommendations
+- Engineering summaries
+
+---
+
+# Tech Stack
+
+## Frontend
 
 - React
 - TypeScript
-- Vite
 - Tailwind CSS
+- Vite
 
-### Infrastructure
+## Backend
 
-- Docker
-- GitHub Apps
-- GitHub Actions
+- Python
+- FastAPI
+- SQLAlchemy
+
+## Database
+
+- PostgreSQL
 - Supabase
 
+## AI
+
+- Groq
+- LLMs
+- AST Analysis
+- Graph-based reasoning
+
+## Infrastructure
+
+- Docker
+- GitHub OAuth
+- REST APIs
+
 ---
 
-## 🗺️ Roadmap
+# Project Vision
 
-### Phase 1
-- Repository Integration
-- Project Brain
-- AI Summaries
-- File Explorer
+DevBrain aims to become the operating system for software engineering teams by combining repository intelligence, AI reasoning, and architecture awareness.
 
-### Phase 2
-- Impact Radar
+Rather than replacing developers, DevBrain helps them make safer and more informed engineering decisions.
+
+---
+
+# Current Status
+
+Current Version: MVP
+
+Implemented:
+
+- GitHub Authentication
+- Repository Import
+- Repository Analysis
+- AST Parsing
+- Dependency Graph
+- AI Change Intelligence
+- Repository Dashboard
+- Engineering Reports
+
+Currently under active development.
+
+---
+
+# Roadmap
+
+- Root Cause Intelligence
 - Architecture Visualization
-- Dependency Intelligence
-
-### Phase 3
-- Engineering Memory
-- Context Retrieval Engine
-
-### Phase 4
-- Context-Aware Prompt Workspace
-- AI Output Validator
-
-### Phase 5
-- Debugging Intelligence
-- Technical Debt Detection
-
-### Phase 6
-- Team Workspaces
+- CI/CD Integration
+- Pull Request Analysis
+- Team Knowledge Graph
 - Enterprise Features
 
-### Phase 7
-- Autonomous Engineering Agents
-
 ---
 
-## 🎯 Vision
+# Author
 
-Future software will increasingly be generated by AI.
+**Punith MG**
 
-Engineering teams will still need:
-
-- Architectural understanding
-- Engineering memory
-- Validation systems
-- Debugging infrastructure
-- Workflow intelligence
-- AI governance
-
-DevBrain is building the operating system for AI-native engineering teams.
-
----
-
-## 🚧 Status
-
-Active Development
-
-Current Focus:
-
-- Project Brain
-- Impact Radar
-- Engineering Memory
-- Context Infrastructure
-
----
-
-## 📄 License
-
-Private / Proprietary
-
-All Rights Reserved.
-
----
-
-<p align="center">
-  <strong>DevBrain — Your Codebase, Understood.</strong>
-</p>
-
-
+Building AI products for the future of software engineering.
