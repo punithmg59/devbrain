@@ -22,17 +22,14 @@ from app.schemas.repo_detail import (
     NodeSummaryRequest,
     NodeSummaryResponse,
     ApiRoutesResponse,
-    BatchSummarizeResponse,
     NodeDependenciesResponse,
     NodeRelation,
     DependencyRisk,
     ImpactAnalysisRequest,
     ImpactReportV2,
-    ProjectBrainResponse,
 )
 from app.services.analysis import ANALYZED_STATUSES
 from app.services.impact_analysis_v2 import run_impact_analysis
-from app.services.project_brain import get_project_brain_dashboard
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["repo-detail"])
@@ -839,101 +836,6 @@ async def summarize_node(
         tags=node.tags or [],
     )
 
-# ── POST /api/repos/{repo_id}/summarize-all ───
-
-@router.post("/api/repos/{repo_id}/summarize-all", response_model=BatchSummarizeResponse)
-async def summarize_all_nodes(
-    repo_id: str,
-    background_tasks: BackgroundTasks,
-    current_user = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
-):
-    repo = await verify_repo_ownership(repo_id, str(current_user.id), db)
-    
-    count_res = await db.execute(
-        select(func.count(Node.id))
-        .where(Node.repo_id == repo.id, Node.summary.is_(None))
-    )
-    count = count_res.scalar() or 0
-
-    if count > 0:
-        background_tasks.add_task(
-            process_all_summaries,
-            repo_id=str(repo.id),
-            user_id=str(current_user.id)
-        )
-
-    return BatchSummarizeResponse(
-        message="Summarization started" if count > 0 else "All nodes already summarized",
-        nodes_to_process=count
-    )
-
-# ── Background task function ──────────────────
-
-async def process_all_summaries(repo_id: str, user_id: str):
-    from app.database import async_session_factory
-    from uuid import UUID
-
-    rid = UUID(repo_id)
-    uid = UUID(user_id)
-
-    async with async_session_factory() as session:
-        try:
-            repo_res = await session.execute(
-                select(Repo).where(Repo.id == rid, Repo.user_id == uid)
-            )
-            repo = repo_res.scalar_one_or_none()
-            if not repo:
-                logger.error(f"Background task: Repo {repo_id} not found for user {user_id}")
-                return
-
-            repo_name = repo.name
-
-            nodes_res = await session.execute(
-                select(Node)
-                .where(Node.repo_id == rid, Node.summary.is_(None))
-                .limit(50)
-            )
-            nodes = nodes_res.scalars().all()
-
-            logger.info(f"Starting batch summarization of {len(nodes)} nodes for repo {repo_name}")
-
-            for node in nodes:
-                try:
-                    result = await generate_node_summary(
-                        node_name=node.name,
-                        node_type=node.node_type,
-                        full_path=node.full_path,
-                        signature=node.signature,
-                        raw_code=node.raw_code,
-                        repo_name=repo_name,
-                        repo_description=repo.description,
-                        repo_language=repo.language,
-                        imports=node.imports,
-                        calls=node.calls,
-                        called_by=node.called_by,
-                        existing_summary=node.summary,
-                    )
-                    node.summary = result["summary"]
-                    node.detailed_explanation = result["detailed_explanation"]
-                    node.architecture_role = result["architecture_role"]
-                    node.complexity_level = result["complexity_level"]
-                    node.call_flow_diagram = result["call_flow_diagram"]
-                    node.ai_tags = result["ai_tags"]
-                    node.potential_risks = result["potential_risks"]
-                    node.tags = result["tags"]
-                    session.add(node)
-                    await session.commit()
-                except Exception as inner_e:
-                    logger.error(f"Error summarizing node {node.id}: {inner_e}")
-
-                await asyncio.sleep(0.5)
-
-            logger.info(f"Completed batch summarization for repo {repo_name}")
-        except Exception as e:
-            logger.error(f"Failed batch summarization background task: {e}")
-
-
 # ── POST /api/repos/{repo_id}/impact-analysis ──
 
 @router.post("/api/repos/{repo_id}/impact-analysis", response_model=ImpactReportV2)
@@ -945,15 +847,3 @@ async def post_impact_analysis(
 ):
     repo = await verify_repo_ownership(repo_id, str(current_user.id), db)
     return await run_impact_analysis(request, repo.id, db)
-
-# ── GET /api/repos/{repo_id}/project-brain ──
-
-@router.get("/api/repos/{repo_id}/project-brain", response_model=ProjectBrainResponse)
-async def get_project_brain(
-    repo_id: str,
-    current_user = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
-):
-    repo = await verify_repo_ownership(repo_id, str(current_user.id), db)
-    return await get_project_brain_dashboard(db, repo.id)
-

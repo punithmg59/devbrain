@@ -1,8 +1,8 @@
 import asyncio
 import ssl
-from sqlalchemy import create_async_engine, select, func
+from sqlalchemy import select, func
 from sqlalchemy.orm import sessionmaker
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 import os
 
 DATABASE_URL = "postgresql+asyncpg://postgres.cikvxankonaacgpnazyk:sp0905%40yp143@aws-1-ap-south-1.pooler.supabase.com:5432/postgres"

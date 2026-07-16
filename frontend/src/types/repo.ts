@@ -170,10 +170,6 @@ export interface NodeSummary {
   tags: string[];
 }
 
-export interface BatchSummarize {
-  message: string;
-  nodes_to_process: number;
-}
 
 export interface RepoDetail {
   id: string;

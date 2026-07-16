@@ -7,7 +7,6 @@ import HomePage from "./pages/HomePage";
 import DashboardPage from "./pages/DashboardPage";
 import RepoDetailPage from "./pages/RepoDetailPage";
 import ImpactRadarPage from "./pages/ImpactRadarPage";
-import ProjectBrainPage from "./pages/ProjectBrainPage";
 import ArchitectureExplorerPage from "./pages/ArchitectureExplorerPage";
 import ArchitectureIntelligencePage from "./pages/ArchitectureIntelligencePage";
 import StoryModePage from "./pages/StoryModePage";
@@ -69,14 +68,7 @@ function App() {
           </ProtectedRoute>
         }
       />
-      <Route
-        path="/repos/:repoId/project-brain"
-        element={
-          <ProtectedRoute>
-            <ProjectBrainPage />
-          </ProtectedRoute>
-        }
-      />
+
       <Route
         path="/repos/:repoId/architecture"
         element={

@@ -6,7 +6,6 @@
 import API from "./authService";
 import type {
   ApiRoutes,
-  BatchSummarize,
   FileDetail,
   FileTreeNode,
   NodeSummary,
@@ -15,7 +14,6 @@ import type {
   RepoDetail,
   RepoStats,
 } from "../types/repo";
-import type { ProjectBrainResponse } from "../types/projectBrain";
 
 // ── Repo detail ────────────────────────────────────────────────
 
@@ -138,22 +136,3 @@ export async function summarizeNode(
   }
 }
 
-export async function summarizeAll(repoId: string): Promise<BatchSummarize> {
-  try {
-    const res = await API.post(`/api/repos/${repoId}/summarize-all`);
-    return res.data;
-  } catch (err: any) {
-    throw new Error(err.response?.data?.detail ?? "Failed to start batch summarization");
-  }
-}
-
-// ── Project Brain ──────────────────────────────────────────────
-
-export async function getProjectBrainDashboard(repoId: string): Promise<ProjectBrainResponse> {
-  try {
-    const res = await API.get(`/api/repos/${repoId}/project-brain`);
-    return res.data;
-  } catch (err: any) {
-    throw new Error(err.response?.data?.detail ?? "Failed to load Project Brain dashboard");
-  }
-}

@@ -43,12 +43,7 @@ export default function WorkspaceNav({ repoId, repoName }: WorkspaceNavProps) {
       icon: FolderTree,
       match: (p) => p === `/repos/${repoId}`,
     },
-    {
-      label: "Project Brain",
-      to: `/repos/${repoId}/project-brain`,
-      icon: BrainCircuit,
-      match: (p) => p.endsWith("/project-brain"),
-    },
+
     {
       label: "Impact Radar",
       to: `/repos/${repoId}/impact`,

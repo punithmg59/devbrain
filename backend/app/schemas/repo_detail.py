@@ -245,10 +245,6 @@ class ApiRoutesResponse(BaseModel):
     total: int
     model_config = ConfigDict(from_attributes=True)
 
-class BatchSummarizeResponse(BaseModel):
-    message: str
-    nodes_to_process: int
-    model_config = ConfigDict(from_attributes=True)
 
 
 # ── Impact Radar V2 ──────────────────────────────────
@@ -342,78 +338,4 @@ class ImpactReportV2(BaseModel):
     graph_traversal_depth: int = 5
     evidence_count: int = 0
 
-
-# ── Project Brain Dashboard ──────────────────────────
-
-class RepoIntelligenceScore(BaseModel):
-    total_score: int
-    code_health: int
-    dependency_health: int
-    architecture_health: int
-    engineering_quality: int
-    risk_exposure: int
-
-class ArchitectureMap(BaseModel):
-    frontend_components: int
-    backend_services: int
-    api_routes: int
-    database_tables: int
-
-class DependencyHealth(BaseModel):
-    healthy: int
-    risky: int
-    circular: int
-    orphaned: int
-
-class CriticalFunction(BaseModel):
-    node_id: str
-    name: str
-    file_path: str
-    importance_score: int
-    inbound_calls: int
-    api_usage: int
-    db_usage: int
-    service_usage: int
-
-class ConnectedComponent(BaseModel):
-    node_id: str
-    name: str
-    degree: int
-
-class DatabaseHotspot(BaseModel):
-    node_id: str
-    name: str
-    total_reads: int
-    total_writes: int
-    total_updates: int
-    total_deletes: int
-    touching_functions: List[str]
-
-class HighRiskApi(BaseModel):
-    node_id: str
-    name: str
-    route_path: Optional[str] = None
-    risk_score: int
-    tables_touched: int
-    functions_touched: int
-
-class ArchitectureViolation(BaseModel):
-    id: str
-    severity: str # Critical, High, Medium, Info
-    rule_name: str
-    description: str
-    source_node_id: Optional[str] = None
-    target_node_id: Optional[str] = None
-    file_path: Optional[str] = None
-
-class ProjectBrainResponse(BaseModel):
-    repo_id: str
-    intelligence_score: RepoIntelligenceScore
-    architecture_map: ArchitectureMap
-    dependency_health: DependencyHealth
-    critical_functions: List[CriticalFunction]
-    connected_components: List[ConnectedComponent]
-    database_hotspots: List[DatabaseHotspot]
-    high_risk_apis: List[HighRiskApi]
-    architecture_violations: List[ArchitectureViolation]
 

@@ -15,7 +15,6 @@ from .impact import (
 from .repo import GitHubRepoItem, RepoResponse, ConnectRepoRequest
 from .repo_detail import (
     ApiRoutesResponse,
-    BatchSummarizeResponse,
     EdgeResponse,
     FileDetailResponse,
     FileResponse,
@@ -56,7 +55,6 @@ __all__ = [
     "RepoResponse",
     "ConnectRepoRequest",
     "ApiRoutesResponse",
-    "BatchSummarizeResponse",
     "EdgeResponse",
     "FileDetailResponse",
     "FileResponse",
