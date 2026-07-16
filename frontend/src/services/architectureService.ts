@@ -73,17 +73,6 @@ export interface ArchitectureDependencies {
   edges: DependencyEdge[];
 }
 
-export interface StoryChapter {
-  title: string;
-  content: string;
-  related_nodes: string[];
-  related_flows: string[];
-}
-
-export interface ArchitectureStory {
-  repository_summary: string;
-  chapters: StoryChapter[];
-}
 
 export interface Hotspot {
   node_id: string;
@@ -121,10 +110,7 @@ export const architectureService = {
     const res = await API.get(`/api/repos/${repoId}/architecture/dependencies`);
     return res.data;
   },
-  getStory: async (repoId: string): Promise<ArchitectureStory> => {
-    const res = await API.get(`/api/repos/${repoId}/architecture/story`);
-    return res.data;
-  },
+
   getHealth: async (repoId: string): Promise<ArchitectureHealthReport> => {
     const res = await API.get(`/api/repos/${repoId}/architecture/health`);
     return res.data;

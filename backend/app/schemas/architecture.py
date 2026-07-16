@@ -200,13 +200,4 @@ class ArchitectureHealthReport(BaseModel):
     recommendations: list[str]
 
 
-class StoryChapter(BaseModel):
-    title: str
-    content: str
-    related_nodes: list[str]
-    related_flows: list[str]
 
-
-class ArchitectureStory(BaseModel):
-    repository_summary: str
-    chapters: list[StoryChapter]

@@ -14,7 +14,6 @@ from app.schemas.architecture import (
     ArchitectureOverview,
     NodeDetails,
     ArchitectureHealthReport,
-    ArchitectureStory,
 )
 from app.services.architecture_explainer_service import ArchitectureExplainerService
 from app.services.architecture_service import ArchitectureService
@@ -159,31 +158,3 @@ async def architecture_health(
     return await ArchitectureHealthService.evaluate_health(repo.id, db)
 
 
-@router.get(
-    "/api/repos/{repo_id}/architecture/story",
-    response_model=ArchitectureStory,
-)
-async def architecture_story(
-    repo_id: str,
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-) -> ArchitectureStory:
-    """Guided narrative story of the architecture, powered by deterministic metrics."""
-    from app.services.architecture_story_service import ArchitectureStoryService
-    repo = await _get_user_repo(repo_id, current_user, db)
-    return await ArchitectureStoryService.generate_story(repo.id, db)
-
-
-@router.get(
-    "/api/repos/{repo_id}/architecture/story/overview",
-    response_model=ArchitectureStory,
-)
-async def architecture_story_overview(
-    repo_id: str,
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-) -> ArchitectureStory:
-    """Guided narrative story overview."""
-    from app.services.architecture_story_service import ArchitectureStoryService
-    repo = await _get_user_repo(repo_id, current_user, db)
-    return await ArchitectureStoryService.generate_story(repo.id, db)

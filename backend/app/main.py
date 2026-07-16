@@ -19,7 +19,6 @@ from app.routers import (
     repo_detail,
     repos,
     workflows,
-    intelligence,
 )
 from app.services.pipeline.orchestrator import worker_loop as _worker_loop
 from app.utils.errors import DevBrainException
@@ -56,7 +55,7 @@ app.include_router(repo_detail.router, prefix="", tags=["repo-detail"])
 app.include_router(impact.router, prefix="", tags=["impact"])
 app.include_router(workflows.router, prefix="", tags=["workflows"])
 app.include_router(architecture.router, prefix="", tags=["architecture"])
-app.include_router(intelligence.router, prefix="", tags=["intelligence"])
+
 app.include_router(flows.router, prefix="", tags=["flows"])
 
 

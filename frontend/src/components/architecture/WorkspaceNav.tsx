@@ -2,11 +2,8 @@ import { Link, useLocation } from "react-router-dom";
 import {
   LayoutDashboard,
   FolderTree,
-  BrainCircuit,
   Radar,
   Network,
-  BookOpen,
-  Zap,
   type LucideIcon,
 } from "lucide-react";
 
@@ -55,18 +52,6 @@ export default function WorkspaceNav({ repoId, repoName }: WorkspaceNavProps) {
       to: `/repos/${repoId}/architecture`,
       icon: Network,
       match: (p) => p === `/repos/${repoId}/architecture`,
-    },
-    {
-      label: "Intelligence",
-      to: `/repos/${repoId}/architecture/intelligence`,
-      icon: Zap,
-      match: (p) => p.endsWith("/architecture/intelligence"),
-    },
-    {
-      label: "Story Mode",
-      to: `/repos/${repoId}/architecture/story`,
-      icon: BookOpen,
-      match: (p) => p.endsWith("/architecture/story"),
     },
   ];
 
