@@ -21,12 +21,14 @@ from .job import TERMINAL_STATUSES, AnalysisJob, JobPriority, JobStatus
 from .parser import (
     ParserCapabilities,
     ParserError,
+    ParserFileMetrics,
     ParserLanguage,
     ParserMetadata,
     ParserOptions,
     ParserResult,
     ParserStatistics,
     ParserStatus,
+    ParserTelemetrySummary,
     ParserVersion,
     ParserWarning,
 )
@@ -66,7 +68,7 @@ __all__ = [
     "JobPriority",
     "AnalysisJob",
     "TERMINAL_STATUSES",
-    # Parser models (Phase 3.1)
+    # Parser models (Phase 3.1 & 3.8)
     "ParserStatus",
     "ParserLanguage",
     "ParserVersion",
@@ -77,6 +79,8 @@ __all__ = [
     "ParserStatistics",
     "ParserMetadata",
     "ParserResult",
+    "ParserFileMetrics",
+    "ParserTelemetrySummary",
     # AST models (Phase 3.2)
     "NodeType",
     "NodeLocation",

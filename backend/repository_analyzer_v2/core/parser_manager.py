@@ -282,8 +282,25 @@ class ParserManager:
 
             result = plugin.parse(job, context, options)
             duration_ms = (time.monotonic() - start_time) * 1000.0
+            # Record metrics & telemetry (Phase 3.8)
+            resource_usage = self._metrics.get_system_resource_usage()
+            ast_nodes = result.statistics.node_count if result.statistics else 0
+            warn_count = len(result.warnings)
+            err_count = len(result.errors)
 
-            # Record metrics
+            from models.parser import ParserFileMetrics
+            file_metric = ParserFileMetrics(
+                file_path=job.file.path,
+                language=plugin.language,
+                plugin_name=result.metadata.parser_name if result.metadata else f"parser-{plugin.language.value}",
+                parser_version=result.metadata.version.semver if (result.metadata and result.metadata.version) else plugin.version.semver,
+                duration_ms=round(duration_ms, 2),
+                ast_node_count=ast_nodes,
+                memory_rss_mb=resource_usage["memory_rss_mb"],
+                warning_count=warn_count,
+                error_count=err_count,
+            )
+            self._metrics.record_parser_file_metrics(context.pipeline_context.run_id, file_metric)
             self._metrics.record_stage_duration(context.pipeline_context.run_id, "Parser", duration_ms)
             logger.debug(f"[ParserManager] Executed parser '{plugin.language.value}' for '{job.file.path}' in {duration_ms:.2f}ms")
             return result
@@ -292,6 +309,21 @@ class ParserManager:
             duration_ms = (time.monotonic() - start_time) * 1000.0
             logger.error(f"[ParserManager] Unhandled parse exception on '{job.file.path}': {exc}", exc_info=True)
             self._metrics.increment_error_count(context.pipeline_context.run_id, 1)
+
+            resource_usage = self._metrics.get_system_resource_usage()
+            from models.parser import ParserFileMetrics
+            file_metric = ParserFileMetrics(
+                file_path=job.file.path,
+                language=plugin.language,
+                plugin_name=f"parser-{plugin.language.value}",
+                parser_version=plugin.version.semver,
+                duration_ms=round(duration_ms, 2),
+                ast_node_count=0,
+                memory_rss_mb=resource_usage["memory_rss_mb"],
+                warning_count=0,
+                error_count=1,
+            )
+            self._metrics.record_parser_file_metrics(context.pipeline_context.run_id, file_metric)
 
             from models.parser import ParserError as ModelParserError
             return ParserResult(

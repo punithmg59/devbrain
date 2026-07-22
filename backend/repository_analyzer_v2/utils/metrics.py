@@ -3,7 +3,9 @@ import os
 import sys
 import threading
 import time
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
+
+from models.parser import ParserFileMetrics, ParserLanguage, ParserTelemetrySummary
 
 try:
     import psutil
@@ -16,7 +18,7 @@ class MetricsCollector:
     """
     Internal, thread-safe metrics collector for tracking pipeline performance,
     stage durations, resource usage (memory/CPU), file counts, worker utilization,
-    and error counts.
+    error counts, and parser telemetry (Phase 3.8).
     """
     _instance: Optional["MetricsCollector"] = None
     _singleton_lock: threading.Lock = threading.Lock()
@@ -41,6 +43,7 @@ class MetricsCollector:
             self._file_counts: Dict[str, Dict[str, int]] = {}
             self._error_counts: Dict[str, int] = {}
             self._worker_utilization: Dict[str, Dict[str, int]] = {}
+            self._parser_file_metrics: Dict[str, List[ParserFileMetrics]] = {}
 
     def record_pipeline_duration(self, run_id: str, duration_ms: float) -> None:
         """Record total duration for a pipeline run."""
@@ -77,6 +80,68 @@ class MetricsCollector:
                     (active_workers / total_workers * 100.0) if total_workers > 0 else 0.0, 2
                 ),
             }
+
+    # ------------------------------------------------------------------
+    # Phase 3.8 — Parser Telemetry Extensions
+    # ------------------------------------------------------------------
+
+    def record_parser_file_metrics(self, run_id: str, metric: ParserFileMetrics) -> None:
+        """Record telemetry metrics for a single file parse operation."""
+        with self._state_lock:
+            if run_id not in self._parser_file_metrics:
+                self._parser_file_metrics[run_id] = []
+            self._parser_file_metrics[run_id].append(metric)
+
+    def get_parser_telemetry_summary(self, run_id: str) -> ParserTelemetrySummary:
+        """Generate aggregate `ParserTelemetrySummary` for a pipeline run."""
+        with self._state_lock:
+            metrics_list = list(self._parser_file_metrics.get(run_id, []))
+
+        total_files = len(metrics_list)
+        total_duration = sum(m.duration_ms for m in metrics_list)
+        total_ast_nodes = sum(m.ast_node_count for m in metrics_list)
+        total_warnings = sum(m.warning_count for m in metrics_list)
+        total_errors = sum(m.error_count for m in metrics_list)
+        peak_memory = max((m.memory_rss_mb for m in metrics_list), default=0.0)
+
+        by_language: Dict[str, Dict[str, Any]] = {}
+        by_plugin: Dict[str, Dict[str, Any]] = {}
+
+        for m in metrics_list:
+            lang_key = m.language.value if isinstance(m.language, ParserLanguage) else str(m.language)
+            plugin_key = m.plugin_name
+
+            # Aggregate by language
+            if lang_key not in by_language:
+                by_language[lang_key] = {"count": 0, "duration_ms": 0.0, "ast_nodes": 0, "errors": 0}
+            by_language[lang_key]["count"] += 1
+            by_language[lang_key]["duration_ms"] = round(by_language[lang_key]["duration_ms"] + m.duration_ms, 2)
+            by_language[lang_key]["ast_nodes"] += m.ast_node_count
+            by_language[lang_key]["errors"] += m.error_count
+
+            # Aggregate by plugin
+            if plugin_key not in by_plugin:
+                by_plugin[plugin_key] = {"count": 0, "duration_ms": 0.0, "version": m.parser_version}
+            by_plugin[plugin_key]["count"] += 1
+            by_plugin[plugin_key]["duration_ms"] = round(by_plugin[plugin_key]["duration_ms"] + m.duration_ms, 2)
+
+        return ParserTelemetrySummary(
+            run_id=run_id,
+            total_files_parsed=total_files,
+            total_duration_ms=round(total_duration, 2),
+            total_ast_nodes=total_ast_nodes,
+            total_warnings=total_warnings,
+            total_errors=total_errors,
+            peak_memory_rss_mb=round(peak_memory, 2),
+            by_language=by_language,
+            by_plugin=by_plugin,
+            file_metrics=metrics_list,
+        )
+
+    def export_parser_telemetry_json(self, run_id: str, indent: int = 2) -> str:
+        """Export parser telemetry summary as JSON string."""
+        summary = self.get_parser_telemetry_summary(run_id)
+        return summary.to_json(indent=indent)
 
     def get_system_resource_usage(self) -> Dict[str, float]:
         """Collect memory and CPU metrics for the current process."""

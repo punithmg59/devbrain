@@ -386,3 +386,43 @@ class ParserResult(BaseModel):
                 ),
             )
         return self
+
+
+# ---------------------------------------------------------------------------
+# Phase 3.8 — Parser Metrics & Telemetry Models
+# ---------------------------------------------------------------------------
+
+class ParserFileMetrics(BaseModel):
+    """Detailed telemetry metrics recorded for a single file parse operation."""
+    file_path: str = Field(..., description="File path parsed")
+    language: ParserLanguage = Field(..., description="Target programming language")
+    plugin_name: str = Field(..., description="Name of parser plugin executed")
+    parser_version: str = Field(..., description="Version of parser plugin executed")
+    duration_ms: float = Field(default=0.0, ge=0.0, description="Parse duration in milliseconds")
+    ast_node_count: int = Field(default=0, ge=0, description="Number of AST nodes generated")
+    memory_rss_mb: float = Field(default=0.0, ge=0.0, description="Process RSS memory usage in MB")
+    warning_count: int = Field(default=0, ge=0, description="Number of parser warnings emitted")
+    error_count: int = Field(default=0, ge=0, description="Number of parser errors encountered")
+
+
+class ParserTelemetrySummary(BaseModel):
+    """Aggregated telemetry summary for an entire parsing run."""
+    run_id: str = Field(..., description="Pipeline execution run ID")
+    total_files_parsed: int = Field(default=0, ge=0, description="Total files parsed")
+    total_duration_ms: float = Field(default=0.0, ge=0.0, description="Cumulative parse duration in ms")
+    total_ast_nodes: int = Field(default=0, ge=0, description="Cumulative AST nodes generated")
+    total_warnings: int = Field(default=0, ge=0, description="Total warnings emitted across all files")
+    total_errors: int = Field(default=0, ge=0, description="Total errors encountered across all files")
+    peak_memory_rss_mb: float = Field(default=0.0, ge=0.0, description="Peak RSS memory observed in MB")
+    by_language: Dict[str, Dict[str, Any]] = Field(default_factory=dict, description="Metrics broken down by language")
+    by_plugin: Dict[str, Dict[str, Any]] = Field(default_factory=dict, description="Metrics broken down by plugin")
+    file_metrics: List[ParserFileMetrics] = Field(default_factory=list, description="Per-file metrics breakdown")
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert telemetry summary to dictionary."""
+        return self.model_dump()
+
+    def to_json(self, indent: int = 2) -> str:
+        """Export telemetry summary as JSON string."""
+        return self.model_dump_json(indent=indent)
+
