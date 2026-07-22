@@ -805,37 +805,37 @@ async def search_nodes(
     if not repo:
         raise HTTPException(status_code=404, detail="Repository not found")
 
-    from app.graph.neo4j_client import run_query
-
     query = """
-    MATCH (n:Node {repo_id: $repo_id})
-    WHERE toLower(n.name) CONTAINS toLower($search)
-    RETURN
-        n.id           AS id,
-        n.name         AS name,
-        n.node_type    AS node_type,
-        n.file_path    AS file_path,
-        n.blast_radius AS blast_radius,
-        n.risk_level   AS risk_level,
-        n.fan_in       AS fan_in
-    ORDER BY n.blast_radius DESC, n.fan_in DESC
+    SELECT 
+        id,
+        name,
+        node_type,
+        full_path as file_path,
+        blast_radius,
+        risk_level,
+        fan_in
+    FROM nodes
+    WHERE repo_id = :repo_id
+    AND LOWER(name) LIKE LOWER(:search)
+    ORDER BY blast_radius DESC, fan_in DESC
     LIMIT 20
     """
     try:
-        rows = await run_query(query, {"repo_id": repo_id, "search": q})
+        result = await db.execute(text(query), {"repo_id": repo_id, "search": f"%{q}%"})
+        rows = result.fetchall()
     except Exception as exc:
-        logger.error("Neo4j search failed: %s", exc)
+        logger.error("PostgreSQL search failed: %s", exc)
         raise HTTPException(status_code=500, detail="Search failed")
 
     return [
         NodeSearchResult(
-            id=r.get("id", ""),
-            name=r.get("name", ""),
-            node_type=r.get("node_type", "unknown"),
-            file_path=r.get("file_path", ""),
-            blast_radius=r.get("blast_radius") or 0,
-            risk_level=r.get("risk_level", "low"),
-            fan_in=r.get("fan_in") or 0,
+            id=str(r.id),
+            name=r.name,
+            node_type=r.node_type,
+            file_path=r.file_path,
+            blast_radius=r.blast_radius or 0,
+            risk_level=r.risk_level or "low",
+            fan_in=r.fan_in or 0,
         )
         for r in rows
     ]
@@ -863,37 +863,37 @@ async def get_top_impact_nodes(
     if not repo:
         raise HTTPException(status_code=404, detail="Repository not found")
 
-    from app.graph.neo4j_client import run_query
-
     query = """
-    MATCH (n:Node {repo_id: $repo_id})
-    WHERE n.blast_radius > 0
-    RETURN
-        n.id           AS id,
-        n.name         AS name,
-        n.node_type    AS node_type,
-        n.file_path    AS file_path,
-        n.blast_radius AS blast_radius,
-        n.risk_level   AS risk_level,
-        n.fan_in       AS fan_in
-    ORDER BY n.blast_radius DESC
+    SELECT 
+        id,
+        name,
+        node_type,
+        full_path as file_path,
+        blast_radius,
+        risk_level,
+        fan_in
+    FROM nodes
+    WHERE repo_id = :repo_id
+    AND blast_radius > 0
+    ORDER BY blast_radius DESC
     LIMIT 20
     """
     try:
-        rows = await run_query(query, {"repo_id": repo_id})
+        result = await db.execute(text(query), {"repo_id": repo_id})
+        rows = result.fetchall()
     except Exception as exc:
-        logger.error("Neo4j top nodes query failed: %s", exc)
+        logger.error("PostgreSQL top nodes query failed: %s", exc)
         raise HTTPException(status_code=500, detail="Query failed")
 
     return [
         NodeSearchResult(
-            id=r.get("id", ""),
-            name=r.get("name", ""),
-            node_type=r.get("node_type", "unknown"),
-            file_path=r.get("file_path", ""),
-            blast_radius=r.get("blast_radius") or 0,
-            risk_level=r.get("risk_level", "low"),
-            fan_in=r.get("fan_in") or 0,
+            id=str(r.id),
+            name=r.name,
+            node_type=r.node_type,
+            file_path=r.file_path,
+            blast_radius=r.blast_radius or 0,
+            risk_level=r.risk_level or "low",
+            fan_in=r.fan_in or 0,
         )
         for r in rows
     ]

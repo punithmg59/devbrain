@@ -23,8 +23,6 @@ from app.routers import (
 from app.services.pipeline.orchestrator import worker_loop as _worker_loop
 from app.utils.errors import DevBrainException
 from app.utils.redis_client import close_redis, init_redis
-from app.graph.neo4j_client import verify_connectivity, close_driver
-from app.graph.schema import apply_schema
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -144,17 +142,6 @@ async def startup_event() -> None:
     _worker_task = asyncio.create_task(_worker_loop(_stop_event))
     logger.info("DevBrain worker loop started")
 
-    # 6. Neo4j connectivity and schema
-    neo4j_ok = await verify_connectivity()
-    if neo4j_ok:
-        await apply_schema()
-    else:
-        logger.warning(
-            "Neo4j not reachable at startup. "
-            "Graph features will be unavailable until Neo4j connects. "
-            "Analysis and Impact pages require Neo4j."
-        )
-
     logger.info("DevBrain API started")
 
 
@@ -172,7 +159,6 @@ async def shutdown_event() -> None:
             _worker_task.cancel()
     
     await close_redis()
-    await close_driver()
     logger.info("DevBrain API shutting down")
 
 

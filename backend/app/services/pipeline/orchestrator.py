@@ -20,9 +20,6 @@ from app.services.pipeline.progress import ProgressReporter
 from app.services.pipeline.resilience import CloneError, PipelineError
 from app.services.pipeline.file_scanner import scan, ScanResult
 from app.services.pipeline.incremental import build_incremental_plan
-from app.services.pipeline.graph_writer import (
-    write_nodes_to_neo4j, write_edges_to_neo4j, delete_repo_graph
-)
 from app.services.pipeline.graph_scorer import compute_scores
 from app.services.pipeline.bulk_writer import (
     bulk_upsert_nodes, bulk_upsert_edges, update_file_hashes
@@ -84,32 +81,9 @@ async def _claim_next_job() -> UUID | None:
         return row[0] if row else None
 
 
-# ── Helper functions for Neo4j integration ───────────────────────────────────
+# ── Helper functions for PostgreSQL integration ───────────────────────────────
 
-def node_to_dict(node) -> dict:
-    """Convert Node ORM instance to plain dict for Neo4j writer."""
-    return {
-        "id":        str(node.id),
-        "repo_id":   str(node.repo_id),
-        "name":      node.name or "",
-        "node_type": node.node_type or "unknown",
-        "file_path": node.full_path or "",
-        "language":  getattr(node, "language", "") or "",
-        "signature": getattr(node, "signature", "") or "",
-        "start_line": getattr(node, "start_line", 0) or 0,
-        "end_line":   getattr(node, "end_line", 0) or 0,
-    }
-
-
-def edge_to_dict(edge) -> dict:
-    """Convert Edge ORM instance to plain dict for Neo4j writer."""
-    return {
-        "id":           str(edge.id),
-        "repo_id":      str(edge.repo_id),
-        "from_node_id": str(edge.from_node_id),
-        "to_node_id":   str(edge.to_node_id),
-        "edge_type":    getattr(edge, "edge_type", "CALLS") or "CALLS",
-    }
+# No longer needed - nodes and edges are already in PostgreSQL
 
 
 # ── Pipeline runner ───────────────────────────────────────────────────────────
@@ -257,20 +231,13 @@ async def run_pipeline(job_id: UUID) -> None:
             )
             edges = edges_result.scalars().all()
 
-            # Write to Neo4j (nodes first, then edges)
-            node_dicts = [node_to_dict(n) for n in nodes]
-            edge_dicts = [edge_to_dict(e) for e in edges]
-
+            # Compute blast radius scores using PostgreSQL
             try:
-                await write_nodes_to_neo4j(node_dicts, str(repo.id))
-                await write_edges_to_neo4j(edge_dicts, str(repo.id))
-
-                # Compute blast radius scores on the graph
                 scores = await compute_scores(str(repo.id))
                 logger.info("Graph scores: %s", scores)
             except Exception as exc:
-                # Neo4j write failure should not fail the whole pipeline
-                logger.warning("Neo4j write failed (continuing with PostgreSQL only): %s", exc)
+                # Scoring failure should not fail the whole pipeline
+                logger.warning("Graph scoring failed: %s", exc)
 
             await reporter.set_graph_counts(
                 nodes=node_count,

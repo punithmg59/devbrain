@@ -1,8 +1,11 @@
 import logging
 import time
 from datetime import datetime, timezone
-
-from app.graph.neo4j_client import run_query
+from sqlalchemy import select, func, text
+from sqlalchemy.ext.asyncio import AsyncSession
+from app.database import async_session_factory
+from app.models.node import Node
+from app.models.edge import Edge
 from app.schemas.impact import (
     SimpleImpactResult,
     AffectedNode,
@@ -125,12 +128,12 @@ def _estimate_effort(blast_radius: int, risk_level: str) -> EffortEstimate:
 
 async def analyze_impact(node_id: str, repo_id: str) -> SimpleImpactResult:
     """
-    Run full impact analysis for a node.
+    Run full impact analysis for a node using PostgreSQL.
 
     Steps:
         1. Check cache — return immediately if cached
-        2. Fetch target node details from Neo4j
-        3. Run blast radius traversal (BFS via incoming edges, 8 hops)
+        2. Fetch target node details from PostgreSQL
+        3. Run blast radius traversal (recursive CTE via incoming edges, 8 hops)
         4. Classify affected nodes by type
         5. Build graph edges for visualization
         6. Calculate risk score and effort estimate
@@ -146,137 +149,188 @@ async def analyze_impact(node_id: str, repo_id: str) -> SimpleImpactResult:
         logger.info("Impact cache hit for node %s", node_id)
         return cached
 
-    # Step 2: fetch target node
-    target_query = """
-    MATCH (n:Node {id: $node_id, repo_id: $repo_id})
-    RETURN
-        n.id          AS id,
-        n.name        AS name,
-        n.node_type   AS node_type,
-        n.file_path   AS file_path,
-        n.fan_in      AS fan_in,
-        n.fan_out     AS fan_out,
-        n.blast_radius AS blast_radius,
-        n.risk_level  AS risk_level
-    """
-    target_rows = await run_query(
-        target_query, {"node_id": node_id, "repo_id": repo_id}
-    )
-    if not target_rows:
-        raise ValueError(f"Node {node_id} not found in repo {repo_id}")
-    target = target_rows[0]
+    async with async_session_factory() as db:
+        # Step 2: fetch target node
+        target_query = """
+        SELECT 
+            id,
+            name,
+            node_type,
+            full_path as file_path,
+            fan_in,
+            fan_out,
+            blast_radius,
+            risk_level
+        FROM nodes
+        WHERE id = :node_id
+        AND repo_id = :repo_id
+        """
+        target_result = await db.execute(text(target_query), {"node_id": node_id, "repo_id": repo_id})
+        target_row = target_result.first()
+        if not target_row:
+            raise ValueError(f"Node {node_id} not found in repo {repo_id}")
 
-    # Step 3: blast radius traversal
-    # Follow incoming edges — who calls/depends on this node?
-    # Return each affected node with its traversal depth.
-    traversal_query = """
-    MATCH (target:Node {id: $node_id, repo_id: $repo_id})
-    MATCH path = (affected:Node {repo_id: $repo_id})
-                 -[:CALLS|IMPORTS|DEPENDS_ON*1..8]->(target)
-    WHERE affected.id <> target.id
-    WITH DISTINCT affected,
-         min(length(path)) AS depth
-    RETURN
-        affected.id           AS id,
-        affected.name         AS name,
-        affected.node_type    AS node_type,
-        affected.file_path    AS file_path,
-        affected.risk_level   AS risk_level,
-        affected.fan_in       AS fan_in,
-        affected.fan_out      AS fan_out,
-        depth
-    ORDER BY depth ASC, affected.fan_in DESC
-    LIMIT 200
-    """
-    affected_rows = await run_query(
-        traversal_query, {"node_id": node_id, "repo_id": repo_id}
-    )
+        target = {
+            "id": str(target_row.id),
+            "name": target_row.name,
+            "node_type": target_row.node_type,
+            "file_path": target_row.file_path,
+            "fan_in": target_row.fan_in or 0,
+            "fan_out": target_row.fan_out or 0,
+            "blast_radius": target_row.blast_radius or 0,
+            "risk_level": target_row.risk_level or "low",
+        }
 
-    # Step 4: classify by type
-    affected_nodes = []
-    affected_apis = []
-    affected_services = []
-    affected_tables = []
-
-    for row in affected_rows:
-        node = AffectedNode(
-            id=row.get("id", ""),
-            name=row.get("name", ""),
-            node_type=row.get("node_type", "unknown"),
-            file_path=row.get("file_path", ""),
-            risk_level=row.get("risk_level", "low"),
-            depth=row.get("depth", 1),
-            fan_in=row.get("fan_in") or 0,
-            fan_out=row.get("fan_out") or 0,
+        # Step 3: blast radius traversal using recursive CTE
+        # Follow incoming edges — who calls/depends on this node?
+        # Return each affected node with its traversal depth.
+        traversal_query = """
+        WITH RECURSIVE affected_nodes AS (
+            -- Base case: nodes that directly call the target
+            SELECT 
+                e.from_node_id as id,
+                n.name,
+                n.node_type,
+                n.full_path as file_path,
+                n.risk_level,
+                n.fan_in,
+                n.fan_out,
+                1 as depth
+            FROM edges e
+            JOIN nodes n ON n.id = e.from_node_id
+            WHERE e.to_node_id = :node_id
+            AND e.repo_id = :repo_id
+            AND n.repo_id = :repo_id
+            AND e.from_node_id != :node_id
+            
+            UNION ALL
+            
+            -- Recursive case: nodes that call nodes that call the target
+            SELECT 
+                e.from_node_id as id,
+                n.name,
+                n.node_type,
+                n.full_path as file_path,
+                n.risk_level,
+                n.fan_in,
+                n.fan_out,
+                an.depth + 1 as depth
+            FROM affected_nodes an
+            JOIN edges e ON e.to_node_id = an.id
+            JOIN nodes n ON n.id = e.from_node_id
+            WHERE e.repo_id = :repo_id
+            AND n.repo_id = :repo_id
+            AND e.from_node_id != :node_id
+            AND an.depth < 8
         )
-        affected_nodes.append(node)
-        t = node.node_type.lower()
-        if t in ("api", "endpoint", "route"):
-            affected_apis.append(node)
-        elif t in ("service",):
-            affected_services.append(node)
-        elif t in ("table", "model", "entity"):
-            affected_tables.append(node)
+        SELECT DISTINCT ON (id)
+            id,
+            name,
+            node_type,
+            file_path,
+            risk_level,
+            fan_in,
+            fan_out,
+            MIN(depth) as depth
+        FROM affected_nodes
+        ORDER BY id, depth ASC
+        LIMIT 200
+        """
+        affected_result = await db.execute(text(traversal_query), {"node_id": node_id, "repo_id": repo_id})
+        affected_rows = affected_result.fetchall()
 
-    # Step 5: build graph edges for visualization
-    edges_query = """
-    MATCH (target:Node {id: $node_id, repo_id: $repo_id})
-    MATCH (a:Node {repo_id: $repo_id})-[r]->(b:Node {repo_id: $repo_id})
-    WHERE (a)-[:CALLS|IMPORTS|DEPENDS_ON*0..8]->(target)
-      AND (b)-[:CALLS|IMPORTS|DEPENDS_ON*0..8]->(target)
-    RETURN
-        a.id      AS source,
-        b.id      AS target,
-        type(r)   AS edge_type
-    LIMIT 500
-    """
-    try:
-        edge_rows = await run_query(
-            edges_query, {"node_id": node_id, "repo_id": repo_id}
+        # Step 4: classify by type
+        affected_nodes = []
+        affected_apis = []
+        affected_services = []
+        affected_tables = []
+
+        for row in affected_rows:
+            node = AffectedNode(
+                id=str(row.id),
+                name=row.name,
+                node_type=row.node_type,
+                file_path=row.file_path,
+                risk_level=row.risk_level or "low",
+                depth=row.depth,
+                fan_in=row.fan_in or 0,
+                fan_out=row.fan_out or 0,
+            )
+            affected_nodes.append(node)
+            t = node.node_type.lower()
+            if t in ("api", "endpoint", "route"):
+                affected_apis.append(node)
+            elif t in ("service",):
+                affected_services.append(node)
+            elif t in ("table", "model", "entity"):
+                affected_tables.append(node)
+
+        # Step 5: build graph edges for visualization
+        edges_query = """
+        SELECT 
+            e.from_node_id as source,
+            e.to_node_id as target,
+            e.edge_type
+        FROM edges e
+        WHERE e.repo_id = :repo_id
+        AND e.from_node_id IN (
+            SELECT from_node_id FROM edges WHERE to_node_id = :node_id AND repo_id = :repo_id
+            UNION
+            SELECT to_node_id FROM edges WHERE from_node_id = :node_id AND repo_id = :repo_id
         )
-    except Exception:
-        edge_rows = []
-
-    graph_edges = [
-        SimpleGraphEdge(
-            source=r.get("source", ""),
-            target=r.get("target", ""),
-            edge_type=r.get("edge_type", "CALLS"),
-            is_critical=(r.get("edge_type") == "CALLS"),
+        AND e.to_node_id IN (
+            SELECT from_node_id FROM edges WHERE to_node_id = :node_id AND repo_id = :repo_id
+            UNION
+            SELECT to_node_id FROM edges WHERE from_node_id = :node_id AND repo_id = :repo_id
         )
-        for r in edge_rows
-        if r.get("source") and r.get("target")
-    ]
+        LIMIT 500
+        """
+        try:
+            edge_result = await db.execute(text(edges_query), {"node_id": node_id, "repo_id": repo_id})
+            edge_rows = edge_result.fetchall()
+        except Exception:
+            edge_rows = []
 
-    # Step 6: scores
-    max_depth = max((n.depth for n in affected_nodes), default=0)
-    risk_score = _calculate_risk_score(
-        blast_radius=len(affected_nodes),
-        fan_in=target.get("fan_in") or 0,
-        affected_api_count=len(affected_apis),
-        max_depth=max_depth,
-    )
-    effort = _estimate_effort(len(affected_nodes), risk_score.level)
+        graph_edges = [
+            SimpleGraphEdge(
+                source=str(r.source),
+                target=str(r.target),
+                edge_type=r.edge_type,
+                is_critical=(r.edge_type == "CALLS"),
+            )
+            for r in edge_rows
+            if r.source and r.target
+        ]
 
-    # Step 7: build result
-    result = SimpleImpactResult(
-        node_id=node_id,
-        node_name=target.get("name", ""),
-        node_type=target.get("node_type", "unknown"),
-        file_path=target.get("file_path", ""),
-        risk_score=risk_score,
-        blast_radius=len(affected_nodes),
-        effort_estimate=effort,
-        affected_nodes=affected_nodes,
-        affected_apis=affected_apis,
-        affected_services=affected_services,
-        affected_tables=affected_tables,
-        graph_edges=graph_edges,
-        recommendations=[],  # filled by router
-        repo_id=repo_id,
-        analyzed_at=datetime.now(timezone.utc).isoformat(),
-    )
+        # Step 6: scores
+        max_depth = max((n.depth for n in affected_nodes), default=0)
+        risk_score = _calculate_risk_score(
+            blast_radius=len(affected_nodes),
+            fan_in=target.get("fan_in") or 0,
+            affected_api_count=len(affected_apis),
+            max_depth=max_depth,
+        )
+        effort = _estimate_effort(len(affected_nodes), risk_score.level)
 
-    # Step 8: cache
-    _cache_set(node_id, repo_id, result)
-    return result
+        # Step 7: build result
+        result = SimpleImpactResult(
+            node_id=node_id,
+            node_name=target.get("name", ""),
+            node_type=target.get("node_type", "unknown"),
+            file_path=target.get("file_path", ""),
+            risk_score=risk_score,
+            blast_radius=len(affected_nodes),
+            effort_estimate=effort,
+            affected_nodes=affected_nodes,
+            affected_apis=affected_apis,
+            affected_services=affected_services,
+            affected_tables=affected_tables,
+            graph_edges=graph_edges,
+            recommendations=[],  # filled by router
+            repo_id=repo_id,
+            analyzed_at=datetime.now(timezone.utc).isoformat(),
+        )
+
+        # Step 8: cache
+        _cache_set(node_id, repo_id, result)
+        return result

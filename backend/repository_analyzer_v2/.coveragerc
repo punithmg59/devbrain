@@ -1,0 +1,22 @@
+[run]
+branch = True
+source =
+    config
+    core
+    models
+    pipeline
+    plugins
+    storage
+    utils
+
+omit =
+    tests/*
+    */__pycache__/*
+
+[report]
+exclude_lines =
+    pragma: no cover
+    def __repr__
+    raise NotImplementedError
+    if __name__ == .__main__.:
+    pass

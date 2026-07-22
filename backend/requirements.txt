@@ -19,5 +19,4 @@ redis[asyncio]==5.0.4
 celery==5.4.0
 pytest==8.2.0
 pytest-asyncio==0.23.6
-neo4j==5.19.0
 anthropic==0.34.0

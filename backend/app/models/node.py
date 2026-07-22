@@ -69,6 +69,11 @@ class Node(Base):
     is_exported: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     is_async: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     complexity_score: Mapped[float] = mapped_column(Float, default=0.0, server_default="0.0")
+    fan_in: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    fan_out: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    blast_radius: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    coupling_score: Mapped[float] = mapped_column(Float, default=0.0, server_default="0.0")
+    risk_level: Mapped[str] = mapped_column(String(20), default="low", server_default="low")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),
