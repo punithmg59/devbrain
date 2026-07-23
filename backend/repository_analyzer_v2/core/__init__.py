@@ -16,6 +16,23 @@ from .health import HealthChecker
 from .job_engine import EngineExecutionSummary, JobExecutionEngine
 from .parser_manager import ParserManager
 from .parser_registry import ParserRegistry
+from .parser_validator import (
+    ASTValidator,
+    CapabilitiesValidator,
+    DiagnosticsValidator,
+    LanguageValidator,
+    MetadataValidator,
+    ParserResultValidator,
+    ParserValidator,
+    RequirementsValidator,
+    VersionValidator,
+)
+from .tree_sitter_engine import (
+    GrammarLoader,
+    LanguageCache,
+    ParserCache,
+    TreeSitterEngine,
+)
 from .plugin_manager import PluginError, PluginManager
 from .scheduler import Scheduler, SchedulerProgress, SchedulerStatistics
 from .worker_pool import (
@@ -61,4 +78,20 @@ __all__ = [
     "ParserManager",
     # Parser Registry (Phase 3.6)
     "ParserRegistry",
+    # Parser Validation Framework (Phase 3.10)
+    "ParserValidator",
+    "ParserResultValidator",
+    "ASTValidator",
+    "DiagnosticsValidator",
+    "MetadataValidator",
+    "CapabilitiesValidator",
+    "VersionValidator",
+    "LanguageValidator",
+    "RequirementsValidator",
+    # Tree-sitter Engine (Phase 4.1)
+    "TreeSitterEngine",
+    "GrammarLoader",
+    "LanguageCache",
+    "ParserCache",
 ]
+

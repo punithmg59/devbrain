@@ -27,6 +27,7 @@ import time
 from typing import Any, Dict, List, Optional, Union
 
 from core.execution_context import ExecutionContext
+from core.tree_sitter_engine import TreeSitterEngine
 from models.health import ComponentHealth, HealthStatus
 from models.job import AnalysisJob
 from models.parser import (
@@ -90,10 +91,12 @@ class ParserManager:
                 cls._instance = None
 
     def _init_state(self) -> None:
-        """Initialize internal registries and state lock."""
+        """Initialize internal registries, engine, and state lock."""
         self._parsers: Dict[ParserLanguage, ParserPlugin] = {}
         self._state_lock: threading.Lock = threading.Lock()
         self._metrics: MetricsCollector = MetricsCollector.get_instance()
+        # Phase 4.1: Tree-sitter engine (lazily or explicitly initialized)
+        self._engine: Optional[TreeSitterEngine] = None
 
     # ------------------------------------------------------------------
     # Validation & Registration
@@ -344,7 +347,7 @@ class ParserManager:
     # ------------------------------------------------------------------
 
     def initialize_all(self, config: Optional[Dict[str, Any]] = None) -> None:
-        """Initialize all registered parser plugins."""
+        """Initialize all registered parser plugins and the Tree-sitter engine."""
         with self._state_lock:
             for lang, plugin in self._parsers.items():
                 if not plugin.is_initialized:
@@ -354,8 +357,18 @@ class ParserManager:
                     except Exception as exc:
                         logger.error(f"[ParserManager] Failed initializing plugin '{lang.value}': {exc}")
 
+        # Initialize Tree-sitter engine for all supported languages
+        if self._engine is None:
+            self._engine = TreeSitterEngine()
+        if not self._engine._is_initialized:
+            try:
+                self._engine.initialize()
+                logger.info("[ParserManager] TreeSitterEngine initialized.")
+            except Exception as exc:
+                logger.error(f"[ParserManager] TreeSitterEngine initialization failed: {exc}")
+
     def shutdown_all(self) -> None:
-        """Shutdown all registered parser plugins and release resources."""
+        """Shutdown all registered parser plugins and release Tree-sitter engine resources."""
         with self._state_lock:
             for lang, plugin in self._parsers.items():
                 if plugin.is_initialized:
@@ -365,8 +378,16 @@ class ParserManager:
                     except Exception as exc:
                         logger.warning(f"[ParserManager] Error shutting down plugin '{lang.value}': {exc}")
 
+        if self._engine is not None:
+            try:
+                self._engine.shutdown()
+                logger.info("[ParserManager] TreeSitterEngine shut down.")
+            except Exception as exc:
+                logger.warning(f"[ParserManager] Error shutting down TreeSitterEngine: {exc}")
+            self._engine = None
+
     def health_check(self) -> Dict[str, ComponentHealth]:
-        """Collect health check status across all registered parser plugins."""
+        """Collect health check status across all registered parser plugins and engine."""
         health_map: Dict[str, ComponentHealth] = {}
         with self._state_lock:
             for lang, plugin in self._parsers.items():
@@ -378,4 +399,32 @@ class ParserManager:
                         status=HealthStatus.UNHEALTHY,
                         message=f"Health check exception: {exc}",
                     )
+
+        # Include Tree-sitter engine health
+        if self._engine is not None:
+            try:
+                health_map["tree_sitter_engine"] = self._engine.component_health()
+            except Exception as exc:
+                health_map["tree_sitter_engine"] = ComponentHealth(
+                    name="TreeSitterEngine",
+                    status=HealthStatus.UNHEALTHY,
+                    message=f"Health check exception: {exc}",
+                )
         return health_map
+
+    def get_engine(self) -> Optional[TreeSitterEngine]:
+        """Return the ``TreeSitterEngine`` instance (internal use only — do not expose native tree-sitter objects)."""
+        return self._engine
+
+    def initialize_engine(self, languages: Optional[List[ParserLanguage]] = None) -> None:
+        """
+        Explicitly initialize the ``TreeSitterEngine`` for specific languages.
+
+        This is the preferred entry point when a caller wants tree-sitter backend
+        parsing without triggering full ``initialize_all()``.
+        """
+        if self._engine is None:
+            self._engine = TreeSitterEngine()
+        if not self._engine._is_initialized:
+            self._engine.initialize(languages)
+            logger.info("[ParserManager] TreeSitterEngine initialized via initialize_engine().")

@@ -1,4 +1,11 @@
 from .analysis import AnalysisResult, AnalysisRun, PipelineStage
+from .tree_sitter_models import (
+    EngineMetrics,
+    GrammarVersion,
+    ParseTree,
+    ParseTreeNode,
+    ParserHealth,
+)
 from .ast import (
     ASTNode,
     ASTRoot,
@@ -40,6 +47,39 @@ from .repository import (
     RepositoryFile,
     RepositorySummary,
 )
+from .validation import (
+    ValidationErrorItem,
+    ValidationIssueCode,
+    ValidationIssueSeverity,
+    ValidationReport,
+    ValidationRequirements,
+    ValidationWarningItem,
+)
+from .semantic import (
+    ExtractedClass,
+    ExtractedDecorator,
+    ExtractedFunction,
+    ExtractedImport,
+    ExtractedModule,
+    ExtractedParameter,
+    ExtractedVariable,
+    MethodModifier,
+    ParameterKind,
+    SemanticExtractionResult,
+    SemanticMetrics,
+    VariableScope,
+)
+from .symbol import (
+    Symbol as SymbolModel,
+    SymbolKind,
+    SymbolLocation,
+    SymbolMetrics,
+    SymbolScope,
+    SymbolValidationIssue,
+    SymbolValidationReport,
+    SymbolVisibility,
+    generate_symbol_id,
+)
 
 __all__ = [
     # Analysis run models
@@ -52,6 +92,16 @@ __all__ = [
     "Import",
     "Node",
     "Symbol",
+    # Symbol Table models (Phase 4.4)
+    "SymbolModel",
+    "SymbolKind",
+    "SymbolScope",
+    "SymbolVisibility",
+    "SymbolLocation",
+    "SymbolMetrics",
+    "SymbolValidationIssue",
+    "SymbolValidationReport",
+    "generate_symbol_id",
     # Repository models
     "Folder",
     "Language",
@@ -95,4 +145,31 @@ __all__ = [
     "Suggestion",
     "Diagnostic",
     "DiagnosticCollection",
+    # Validation models (Phase 3.10)
+    "ValidationIssueSeverity",
+    "ValidationIssueCode",
+    "ValidationErrorItem",
+    "ValidationWarningItem",
+    "ValidationRequirements",
+    "ValidationReport",
+    # Tree-sitter models (Phase 4.1)
+    "GrammarVersion",
+    "ParseTreeNode",
+    "ParseTree",
+    "ParserHealth",
+    "EngineMetrics",
+    # Semantic models (Phase 4.3)
+    "ParameterKind",
+    "VariableScope",
+    "MethodModifier",
+    "ExtractedDecorator",
+    "ExtractedParameter",
+    "ExtractedImport",
+    "ExtractedVariable",
+    "ExtractedFunction",
+    "ExtractedClass",
+    "ExtractedModule",
+    "SemanticMetrics",
+    "SemanticExtractionResult",
 ]
+
