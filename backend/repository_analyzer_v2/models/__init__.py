@@ -90,6 +90,17 @@ from .scope import (
     ScopeValidationReport,
     ShadowingRelationship,
 )
+from .import_models import (
+    ImportAlias,
+    ImportKind,
+    ImportMetrics,
+    ImportRecord,
+    ImportResolution,
+    ImportResolutionResult,
+    ImportResolutionStatus,
+    ImportValidationIssue,
+    ImportValidationReport,
+)
 
 __all__ = [
     # Analysis run models
@@ -121,6 +132,16 @@ __all__ = [
     "ScopeValidationIssue",
     "ScopeValidationReport",
     "ShadowingRelationship",
+    # Import Resolution models (Phase 4.6)
+    "ImportAlias",
+    "ImportKind",
+    "ImportMetrics",
+    "ImportRecord",
+    "ImportResolution",
+    "ImportResolutionResult",
+    "ImportResolutionStatus",
+    "ImportValidationIssue",
+    "ImportValidationReport",
     # Repository models
     "Folder",
     "Language",
