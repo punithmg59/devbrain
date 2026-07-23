@@ -80,6 +80,16 @@ from .symbol import (
     SymbolVisibility,
     generate_symbol_id,
 )
+from .scope import (
+    Scope,
+    ScopeKind,
+    ScopeLocation,
+    ScopeMetrics,
+    ScopeResolutionResult,
+    ScopeValidationIssue,
+    ScopeValidationReport,
+    ShadowingRelationship,
+)
 
 __all__ = [
     # Analysis run models
@@ -102,6 +112,15 @@ __all__ = [
     "SymbolValidationIssue",
     "SymbolValidationReport",
     "generate_symbol_id",
+    # Scope Resolution models (Phase 4.5)
+    "Scope",
+    "ScopeKind",
+    "ScopeLocation",
+    "ScopeMetrics",
+    "ScopeResolutionResult",
+    "ScopeValidationIssue",
+    "ScopeValidationReport",
+    "ShadowingRelationship",
     # Repository models
     "Folder",
     "Language",
