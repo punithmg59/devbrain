@@ -101,6 +101,16 @@ from .import_models import (
     ImportValidationIssue,
     ImportValidationReport,
 )
+from .reference_models import (
+    ReferenceKind,
+    ReferenceLocation,
+    ReferenceMetrics,
+    ReferenceRecord,
+    ReferenceResolution,
+    ReferenceResolutionResult,
+    ReferenceValidationIssue,
+    ReferenceValidationReport,
+)
 
 __all__ = [
     # Analysis run models
@@ -142,6 +152,15 @@ __all__ = [
     "ImportResolutionStatus",
     "ImportValidationIssue",
     "ImportValidationReport",
+    # Reference Resolution models (Phase 4.7)
+    "ReferenceKind",
+    "ReferenceLocation",
+    "ReferenceMetrics",
+    "ReferenceRecord",
+    "ReferenceResolution",
+    "ReferenceResolutionResult",
+    "ReferenceValidationIssue",
+    "ReferenceValidationReport",
     # Repository models
     "Folder",
     "Language",

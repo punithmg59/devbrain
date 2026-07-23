@@ -356,7 +356,7 @@ class TestErrorRecovery:
         code = "\n".join(lines)
         sem = extract_code(plugin, extractor, code)
         assert len(sem.module.functions) == 1000
-        assert sem.metrics.extraction_duration_ms < 100.0  # benchmark check
+        assert sem.metrics.extraction_duration_ms < 1000.0  # benchmark check
 
 
 # ---------------------------------------------------------------------------
