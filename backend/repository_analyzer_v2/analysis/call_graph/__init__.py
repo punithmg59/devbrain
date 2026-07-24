@@ -1,10 +1,10 @@
 """
 analysis/call_graph/__init__.py
 -------------------------------
-Phase 4.8.1 & Phase 4.8.2 — Call Graph & Query Engine Package.
+Phase 4.8.1, 4.8.2, 4.8.3 — Call Graph, Query Engine & Validation Package.
 
-Exports directed call graph models, builder, indexer, query engine, validation,
-and telemetry helpers for Phase 4.8.1 and Phase 4.8.2.
+Exports directed call graph models, builder, indexer, query engine, read-only validator,
+rules suite, and telemetry helpers.
 """
 
 from models.graph_models import (
@@ -23,24 +23,49 @@ from models.graph_index_models import (
     GraphIndexValidationIssue,
     GraphIndexValidationReport,
 )
+from models.graph_validation_models import (
+    GraphValidationResult,
+    ValidationIssue,
+    ValidationMetrics,
+    ValidationReport,
+    ValidationSeverity,
+)
 from analysis.call_graph.exceptions import (
     CallGraphBuildError,
     DuplicateEdgeWarning,
     DuplicateIndexWarning,
     DuplicateNodeError,
+    EdgeValidationError,
+    GraphConsistencyError,
     GraphIndexError,
+    IndexValidationError,
+    IntegrityValidationError,
     InvalidEdgeError,
     InvalidIndexError,
     InvalidNodeError,
     MissingEdgeError,
     MissingNodeError,
+    NodeValidationError,
+    ValidationError,
 )
 from analysis.call_graph.graph_builder import CallGraphBuilder
 from analysis.call_graph.graph_index import CallGraphIndexBuilder
 from analysis.call_graph.query_engine import CallGraphQueryEngine
-from analysis.call_graph.validator import CallGraphValidator
-from analysis.call_graph.index_validator import GraphIndexValidator
-from analysis.call_graph.metrics import compute_index_metrics, compute_metrics
+from analysis.call_graph.validator import CallGraphValidator, GraphValidator
+from analysis.call_graph.validation_rules import (
+    BaseValidationRule,
+    EdgeValidationRule,
+    GraphConsistencyRule,
+    IndexValidationRule,
+    NodeValidationRule,
+    ReferenceIntegrityRule,
+    StructuralIntegrityRule,
+)
+from analysis.call_graph.metrics import (
+    compute_index_metrics,
+    compute_metrics,
+    compute_validation_metrics,
+)
 
 __all__ = [
     # Graph Construction (Phase 4.8.1)
@@ -56,12 +81,25 @@ __all__ = [
     # Graph Index & Query Engine (Phase 4.8.2)
     "CallGraphIndexBuilder",
     "CallGraphQueryEngine",
-    "GraphIndexValidator",
     "GraphIndex",
     "GraphIndexMetrics",
     "GraphIndexValidationIssue",
     "GraphIndexValidationReport",
     "CallGraphIndexResult",
+    # Graph Validation & Integrity Framework (Phase 4.8.3)
+    "GraphValidator",
+    "BaseValidationRule",
+    "StructuralIntegrityRule",
+    "NodeValidationRule",
+    "EdgeValidationRule",
+    "IndexValidationRule",
+    "GraphConsistencyRule",
+    "ReferenceIntegrityRule",
+    "ValidationSeverity",
+    "ValidationIssue",
+    "ValidationMetrics",
+    "ValidationReport",
+    "GraphValidationResult",
     # Exceptions
     "CallGraphBuildError",
     "InvalidNodeError",
@@ -73,7 +111,14 @@ __all__ = [
     "MissingNodeError",
     "MissingEdgeError",
     "DuplicateIndexWarning",
+    "ValidationError",
+    "NodeValidationError",
+    "EdgeValidationError",
+    "IntegrityValidationError",
+    "IndexValidationError",
+    "GraphConsistencyError",
     # Metrics
     "compute_metrics",
     "compute_index_metrics",
+    "compute_validation_metrics",
 ]

@@ -1,10 +1,10 @@
 """
 analysis/call_graph/metrics.py
 -------------------------------
-Phase 4.8.1 & 4.8.2 — Call Graph Telemetry Metrics Helpers.
+Phase 4.8.1, 4.8.2, 4.8.3 — Call Graph Telemetry Metrics Helpers.
 
-Calculates performance telemetry, throughput, memory footprint, and index statistics
-for call graph construction and index building.
+Calculates performance telemetry, throughput, memory footprint, index statistics,
+and validation metrics.
 """
 
 from __future__ import annotations
@@ -15,6 +15,7 @@ from typing import Optional, TYPE_CHECKING
 
 from models.graph_models import CallGraph, CallGraphMetrics
 from models.graph_index_models import GraphIndex, GraphIndexMetrics
+from models.graph_validation_models import ValidationMetrics
 
 if TYPE_CHECKING:
     from analysis.call_graph.query_engine import CallGraphQueryEngine
@@ -31,10 +32,10 @@ def compute_metrics(
     """
     Compute CallGraphMetrics telemetry from a completed CallGraph.
     """
-    total_nodes = len(graph.nodes)
-    total_edges = len(graph.edges)
+    total_nodes = len(graph.nodes) if graph and graph.nodes else 0
+    total_edges = len(graph.edges) if graph and graph.edges else 0
 
-    external_nodes = sum(1 for n in graph.nodes.values() if n.is_external)
+    external_nodes = sum(1 for n in graph.nodes.values() if n.is_external) if graph and graph.nodes else 0
     internal_nodes = total_nodes - external_nodes
 
     build_sec = max(0.0001, build_time_ms / 1000.0)
@@ -66,8 +67,8 @@ def compute_index_metrics(
     """
     Compute GraphIndexMetrics telemetry from a completed GraphIndex.
     """
-    indexed_nodes = len(graph_index.node_by_symbol_id)
-    indexed_edges = sum(len(edges) for edges in graph_index.edges_by_caller.values())
+    indexed_nodes = len(graph_index.node_by_symbol_id) if graph_index and graph_index.node_by_symbol_id else 0
+    indexed_edges = sum(len(edges) for edges in graph_index.edges_by_caller.values()) if graph_index and graph_index.edges_by_caller else 0
 
     lookups_per_second = 0.0
     if query_engine and indexed_nodes > 0:
@@ -76,14 +77,52 @@ def compute_index_metrics(
     return GraphIndexMetrics(
         indexed_nodes=indexed_nodes,
         indexed_edges=indexed_edges,
-        caller_index_size=len(graph_index.edges_by_caller),
-        callee_index_size=len(graph_index.edges_by_callee),
-        file_index_size=len(graph_index.nodes_by_file),
-        fqn_index_size=len(graph_index.node_by_fqn),
+        caller_index_size=len(graph_index.edges_by_caller) if graph_index and graph_index.edges_by_caller else 0,
+        callee_index_size=len(graph_index.edges_by_callee) if graph_index and graph_index.edges_by_callee else 0,
+        file_index_size=len(graph_index.nodes_by_file) if graph_index and graph_index.nodes_by_file else 0,
+        fqn_index_size=len(graph_index.node_by_fqn) if graph_index and graph_index.node_by_fqn else 0,
         duplicate_index_entries=duplicate_index_entries,
         build_time_ms=round(build_time_ms, 3),
         peak_memory_mb=round(_get_memory_mb(), 2),
         lookups_per_second=round(lookups_per_second, 1),
+    )
+
+
+def compute_validation_metrics(
+    graph: Optional[CallGraph] = None,
+    graph_index: Optional[GraphIndex] = None,
+    rules_executed: int = 0,
+    info_count: int = 0,
+    warning_count: int = 0,
+    error_count: int = 0,
+    critical_count: int = 0,
+    validation_duration_ms: float = 0.0,
+) -> ValidationMetrics:
+    """
+    Compute ValidationMetrics telemetry from a completed graph validation pass.
+    """
+    validated_nodes = len(graph.nodes) if graph and graph.nodes else 0
+    validated_edges = len(graph.edges) if graph and graph.edges else 0
+
+    validated_indexes = 0
+    if graph_index:
+        validated_indexes = (
+            len(graph_index.node_by_symbol_id or {})
+            + len(graph_index.node_by_fqn or {})
+            + len(graph_index.nodes_by_file or {})
+            + len(graph_index.edges_by_caller or {})
+        )
+
+    return ValidationMetrics(
+        validated_nodes=validated_nodes,
+        validated_edges=validated_edges,
+        validated_indexes=validated_indexes,
+        rules_executed=rules_executed,
+        info_count=info_count,
+        warning_count=warning_count,
+        error_count=error_count,
+        critical_count=critical_count,
+        validation_duration_ms=round(validation_duration_ms, 3),
     )
 
 
