@@ -28,6 +28,7 @@ from analysis.import_resolution.import_resolver import ImportResolver
 from analysis.reference_resolution.reference_resolver import ReferenceResolver
 from analysis.function_call_detection.call_detector import FunctionCallDetector
 from analysis.call_graph.graph_builder import CallGraphBuilder
+from analysis.call_graph.graph_index import CallGraphIndexBuilder
 
 
 def measure_memory_mb() -> float:
@@ -391,6 +392,39 @@ def main():
     print(f"  - Skipped unresolved calls: {cg_result.metrics.skipped_edges:,}")
     print(f"  - Graph validation report: valid={cg_result.validation_report.is_valid}, errors={cg_result.validation_report.error_count}, warnings={cg_result.validation_report.warning_count}")
     print(f"  - Duration: {phase9_duration_ms:.2f} ms\n")
+
+    # ------------------------------------------------------------------
+    # PHASE 10: Graph Index & Query Engine (Phase 4.8.2)
+    # ------------------------------------------------------------------
+    t0 = time.perf_counter()
+    cg_index_builder = CallGraphIndexBuilder(repository_id=repo_id)
+    cg_index_result = cg_index_builder.build_index(cg_result)
+
+    phase10_duration_ms = (time.perf_counter() - t0) * 1000.0
+    peak_mem = max(peak_mem, measure_memory_mb())
+
+    query_engine = cg_index_result.query_engine
+
+    total_duration_ms = (time.perf_counter() - start_total_time) * 1000.0
+
+    print(f"[Phase 10: Graph Index & Query Engine]")
+    print(f"  - Indexed nodes: {cg_index_result.metrics.indexed_nodes:,}")
+    print(f"  - Indexed outgoing edge lists: {cg_index_result.metrics.caller_index_size:,}")
+    print(f"  - Indexed incoming edge lists: {cg_index_result.metrics.callee_index_size:,}")
+    print(f"  - Unique FQNs indexed: {cg_index_result.metrics.fqn_index_size:,}")
+    print(f"  - Source files indexed: {cg_index_result.metrics.file_index_size:,}")
+    print(f"  - Benchmark O(1) query throughput: {cg_index_result.metrics.lookups_per_second:,.0f} lookups/sec")
+    print(f"  - Index validation report: valid={cg_index_result.validation_report.is_valid}, errors={cg_index_result.validation_report.error_count}, warnings={cg_index_result.validation_report.warning_count}")
+    print(f"  - Duration: {phase10_duration_ms:.2f} ms\n")
+
+    # Verify query engine API lookups
+    sample_node = query_engine.find_node_by_fqn("fastapi.applications.FastAPI")
+    if sample_node:
+        callers = query_engine.find_callers(sample_node.symbol_id)
+        incoming = query_engine.find_incoming_edges(sample_node.symbol_id)
+        print(f"  [Query Engine Verification Sample]")
+        print(f"    Target FQN: 'fastapi.applications.FastAPI' -> Node ID: {sample_node.symbol_id}")
+        print(f"    Callers count: {len(callers)}, Incoming edges count: {len(incoming)}\n")
 
     print("==========================================================")
     print(" COMPLETE PIPELINE EXECUTION SUMMARY FOR FASTAPI")

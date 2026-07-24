@@ -447,8 +447,8 @@
     "alias_count": 133,
     "wildcard_count": 0,
     "resolution_latency_us": 0.0,
-    "build_duration_ms": 26845.224,
-    "memory_bytes": 811958272
+    "build_duration_ms": 22313.08,
+    "memory_bytes": 1299783680
   },
   "import_warnings": [
     "Duplicate import statement snippet 'from pydantic import v1' in 'fastapi/_compat/shared.py'",
@@ -1079,8 +1079,8 @@
     "attribute_count": 0,
     "definition_count": 16165,
     "resolution_latency_us": 0.0,
-    "build_duration_ms": 40122.088,
-    "memory_bytes": 551473152
+    "build_duration_ms": 33244.55,
+    "memory_bytes": 1361670144
   },
   "reference_warnings": [
     "Unresolved reference to 'BaseModel' in 'docs_src/additional_responses/tutorial001_py310.py' (line 6)",
@@ -1591,17 +1591,17 @@
   ],
   "reference_errors": [],
   "phase_durations_ms": {
-    "phase1_discovery": 1050.8385000011913,
-    "phase2_parser": 131967.18949999922,
-    "phase3_semantic": 48860.43629999949,
-    "phase4_symbol_table": 814.3471999992471,
-    "phase5_scope_resolution": 112534.08720000152,
-    "phase6_import_resolution": 26851.003199999468,
-    "phase7_reference_resolution": 40144.09979999982,
-    "total": 756620.8917000004
+    "phase1_discovery": 1182.103900000584,
+    "phase2_parser": 130655.0686999999,
+    "phase3_semantic": 36445.49659999939,
+    "phase4_symbol_table": 4748.874599999908,
+    "phase5_scope_resolution": 110374.3470999998,
+    "phase6_import_resolution": 22314.660800000638,
+    "phase7_reference_resolution": 33262.81310000013,
+    "total": 671992.1878999994
   },
-  "avg_time_per_file_ms": 671.358377728483,
-  "peak_memory_mb": 1201.59765625,
+  "avg_time_per_file_ms": 596.2663601597155,
+  "peak_memory_mb": 1297.14453125,
   "validation_samples": {
     "imports": [
       {
@@ -1969,83 +1969,83 @@
     ],
     "scopes": [
       {
-        "id": "scope-af27205ded0f",
+        "id": "scope-c983e0a9fa9f",
         "name": "function:replace_placeholders_with_code_includes",
         "kind": "function",
         "file": "scripts/doc_parsing_utils.py",
-        "parent_id": "scope-ee1637b6e264",
+        "parent_id": "scope-8fae4d1fc091",
         "symbol_count": 4
       },
       {
-        "id": "scope-a72d905dbd85",
+        "id": "scope-781418c09130",
         "name": "function:test_post_upload_file",
         "kind": "function",
         "file": "tests/test_tutorial/test_request_files/test_tutorial002.py",
-        "parent_id": "scope-e15eb91b66a7",
+        "parent_id": "scope-4e65194cd6c4",
         "symbol_count": 5
       },
       {
-        "id": "scope-1d5ecbce59ce",
+        "id": "scope-8086ffbef05b",
         "name": "function:common_parameters",
         "kind": "function",
         "file": "docs_src/dependencies/tutorial001_02_an_py310.py",
-        "parent_id": "scope-cb03c12ae4f4",
+        "parent_id": "scope-7781386a2b45",
         "symbol_count": 3
       },
       {
-        "id": "scope-1b9f222fc099",
+        "id": "scope-b405b0b6eace",
         "name": "function:test_api",
         "kind": "function",
         "file": "tests/test_tutorial/test_custom_docs_ui/test_tutorial001.py",
-        "parent_id": "scope-82ff0854dbaf",
+        "parent_id": "scope-c1d2c58199a5",
         "symbol_count": 3
       },
       {
-        "id": "scope-61140fcc8579",
+        "id": "scope-53a70445753f",
         "name": "class:ParamModelV1",
         "kind": "class",
         "file": "tests/test_pydantic_v1_error.py",
-        "parent_id": "scope-8d40db5fde59",
+        "parent_id": "scope-0e712788b091",
         "symbol_count": 1
       },
       {
-        "id": "scope-edd723da088e",
+        "id": "scope-4a0434fa588e",
         "name": "function:get_current_user",
         "kind": "function",
         "file": "tests/test_security_api_key_query_optional.py",
-        "parent_id": "scope-0f21e683f843",
+        "parent_id": "scope-5bc9b687185e",
         "symbol_count": 2
       },
       {
-        "id": "scope-acf823158fac",
+        "id": "scope-0baaca153f9f",
         "name": "function:read_item_public_data",
         "kind": "function",
         "file": "docs_src/response_model/tutorial005_py310.py",
-        "parent_id": "scope-527847332049",
+        "parent_id": "scope-41bbadb0095e",
         "symbol_count": 2
       },
       {
-        "id": "scope-f74e8cf19221",
+        "id": "scope-ca0a152f2877",
         "name": "function:test_get_api_route",
         "kind": "function",
         "file": "tests/test_extra_routes.py",
-        "parent_id": "scope-9e2b5406caaa",
+        "parent_id": "scope-305b83c0a3e8",
         "symbol_count": 1
       },
       {
-        "id": "scope-687600c8e1d3",
+        "id": "scope-510955461d5c",
         "name": "class:CommonHeaders",
         "kind": "class",
         "file": "docs_src/header_param_models/tutorial001_py310.py",
-        "parent_id": "scope-b60f5072be1f",
+        "parent_id": "scope-848aa89e349e",
         "symbol_count": 5
       },
       {
-        "id": "scope-932ab846106a",
+        "id": "scope-956834b3cad2",
         "name": "function:test_strict_login_no_data",
         "kind": "function",
         "file": "tests/test_security_oauth2_optional.py",
-        "parent_id": "scope-5a2d345b43a9",
+        "parent_id": "scope-efb5dac7cb52",
         "symbol_count": 1
       }
     ]
