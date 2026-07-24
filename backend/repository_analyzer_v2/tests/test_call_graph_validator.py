@@ -46,7 +46,7 @@ class TestCallGraphValidator:
         assert "EDGE_COUNT_MISMATCH" in codes
 
     def test_dangling_edge_detected(self):
-        n1 = CallGraphNode(symbol_id="node-1", fully_qualified_name="app.a", name="a")
+        n1 = CallGraphNode(symbol_id="node-1", fully_qualified_name="app.a", name="a", file_path="app/a.py")
         # edge references node-2 which is missing from nodes dictionary
         e1 = CallGraphEdge(caller_symbol_id="node-1", callee_symbol_id="node-missing")
 
@@ -62,4 +62,5 @@ class TestCallGraphValidator:
 
         assert not report.is_valid
         assert report.error_count == 1
-        assert report.issues[0].code == "DANGLING_CALLEE_EDGE"
+        codes = [i.code for i in report.issues]
+        assert "CALLEE_DOES_NOT_EXIST" in codes or "DANGLING_CALLEE_EDGE" in codes

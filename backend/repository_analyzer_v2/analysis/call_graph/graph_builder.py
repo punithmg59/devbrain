@@ -95,7 +95,8 @@ class CallGraphBuilder:
         # 1. Pre-populate Nodes from SymbolTable (Functions, Methods, Classes, Constructors)
         if symbol_table:
             for sym in symbol_table.symbols.values():
-                if sym.kind in (SymbolKind.FUNCTION, SymbolKind.METHOD, SymbolKind.CLASS):
+                kind_val = sym.kind.value if hasattr(sym.kind, "value") else str(sym.kind)
+                if kind_val in ("function", "method", "class"):
                     node = self._create_node_from_symbol(sym)
                     if node.symbol_id in nodes:
                         duplicate_nodes += 1

@@ -168,13 +168,31 @@ class GraphValidator:
         return self.validate(graph=index_result.graph, graph_index=index_result.graph_index)
 
 
-# Re-export CallGraphValidator for backward compatibility
+from models.graph_models import CallGraphValidationIssue, CallGraphValidationReport
+
+
+# Re-export CallGraphValidator for backward compatibility with CallGraphBuilder
 class CallGraphValidator:
     """Backward compatibility wrapper delegating to GraphValidator."""
 
     def __init__(self, repository_id: str = "repo") -> None:
         self._validator = GraphValidator(repository_id=repository_id)
 
-    def validate(self, graph: CallGraph) -> ValidationReport:
+    def validate(self, graph: CallGraph) -> CallGraphValidationReport:
         val_res = self._validator.validate(graph)
-        return val_res.validation_report
+        issues = [
+            CallGraphValidationIssue(
+                severity=i.severity.value if hasattr(i.severity, "value") else str(i.severity),
+                code=i.code,
+                message=i.message,
+                node_id=i.target_id,
+                edge_id=i.target_id,
+            )
+            for i in val_res.validation_report.issues
+        ]
+        return CallGraphValidationReport(
+            is_valid=val_res.validation_report.is_valid,
+            issues=issues,
+            error_count=val_res.validation_report.error_count,
+            warning_count=val_res.validation_report.warning_count,
+        )
