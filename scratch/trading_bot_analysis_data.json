@@ -1,0 +1,520 @@
+{
+  "repo_path": "d:\\devbrain\\Trading_bot",
+  "total_files": 115,
+  "python_files": 95,
+  "total_code_bytes": 2939948,
+  "language_breakdown": {
+    "no_extension": 1,
+    ".md": 1,
+    ".code-workspace": 1,
+    ".py": 95,
+    ".png": 14,
+    ".yaml": 1,
+    ".json": 1,
+    ".txt": 1
+  },
+  "parse_success_count": 95,
+  "parse_error_count": 0,
+  "total_ast_nodes": 0,
+  "semantic_entities": {
+    "classes": 14,
+    "functions": 234,
+    "variables": 496,
+    "raw_imports": 380
+  },
+  "symbol_metrics": {
+    "total_symbols": 2206,
+    "is_valid": true,
+    "error_count": 0,
+    "warning_count": 7,
+    "issues": [
+      {
+        "severity": "warning",
+        "code": "DUPLICATE_FQN",
+        "message": "Duplicate FQN 'btc-autotrader.backtest.run_backtest.run_backtest.df' shared by 2 symbols",
+        "symbol_id": null,
+        "fqn": "btc-autotrader.backtest.run_backtest.run_backtest.df"
+      },
+      {
+        "severity": "warning",
+        "code": "DUPLICATE_FQN",
+        "message": "Duplicate FQN 'demo.coindcx_client.CoinDCXClient.post.payload' shared by 2 symbols",
+        "symbol_id": null,
+        "fqn": "demo.coindcx_client.CoinDCXClient.post.payload"
+      },
+      {
+        "severity": "warning",
+        "code": "DUPLICATE_FQN",
+        "message": "Duplicate FQN 'demo.coindcx_client.CoinDCXClient.post.timeout' shared by 2 symbols",
+        "symbol_id": null,
+        "fqn": "demo.coindcx_client.CoinDCXClient.post.timeout"
+      },
+      {
+        "severity": "warning",
+        "code": "DUPLICATE_FQN",
+        "message": "Duplicate FQN 'demo.coindcx_client.post.payload' shared by 2 symbols",
+        "symbol_id": null,
+        "fqn": "demo.coindcx_client.post.payload"
+      },
+      {
+        "severity": "warning",
+        "code": "DUPLICATE_FQN",
+        "message": "Duplicate FQN 'demo.coindcx_client.post.timeout' shared by 2 symbols",
+        "symbol_id": null,
+        "fqn": "demo.coindcx_client.post.timeout"
+      },
+      {
+        "severity": "warning",
+        "code": "DUPLICATE_FQN",
+        "message": "Duplicate FQN 'demo.config.Config._load_env.env_path' shared by 2 symbols",
+        "symbol_id": null,
+        "fqn": "demo.config.Config._load_env.env_path"
+      },
+      {
+        "severity": "warning",
+        "code": "DUPLICATE_FQN",
+        "message": "Duplicate FQN 'demo.config._load_env.env_path' shared by 2 symbols",
+        "symbol_id": null,
+        "fqn": "demo.config._load_env.env_path"
+      }
+    ]
+  },
+  "scope_metrics": {
+    "total_scopes": 343,
+    "max_nesting_depth": 3,
+    "shadowing_count": 55,
+    "warnings": [],
+    "errors": [],
+    "shadowing_records": [
+      {
+        "name": "__init__",
+        "shadowing_symbol_id": "sym-2327eeaba0c0be87",
+        "shadowed_symbol_id": "sym-39cc09a42cd30ed2",
+        "inner_scope_id": "scope-3ea69ebfb100",
+        "outer_scope_id": "scope-33265b83b683"
+      },
+      {
+        "name": "df",
+        "shadowing_symbol_id": "sym-41ce22d4ba6add9d",
+        "shadowed_symbol_id": "sym-1b00e299da532c34",
+        "inner_scope_id": "scope-7ac9522b8658",
+        "outer_scope_id": "scope-92c93fb0d7d0"
+      },
+      {
+        "name": "df",
+        "shadowing_symbol_id": "sym-0c4028a0a6b20c33",
+        "shadowed_symbol_id": "sym-1b00e299da532c34",
+        "inner_scope_id": "scope-7ac9522b8658",
+        "outer_scope_id": "scope-92c93fb0d7d0"
+      },
+      {
+        "name": "results",
+        "shadowing_symbol_id": "sym-d7d5b4b35a18f227",
+        "shadowed_symbol_id": "sym-48c008c83a93ab12",
+        "inner_scope_id": "scope-e550e0c853be",
+        "outer_scope_id": "scope-92c93fb0d7d0"
+      },
+      {
+        "name": "mode",
+        "shadowing_symbol_id": "sym-49d97ebe82665b58",
+        "shadowed_symbol_id": "sym-f738736d918307ff",
+        "inner_scope_id": "scope-dd83c3fe23bd",
+        "outer_scope_id": "scope-dc01731a58a3"
+      },
+      {
+        "name": "timeframe",
+        "shadowing_symbol_id": "sym-847c8438c53ab7d5",
+        "shadowed_symbol_id": "sym-fa1bc668de21aa3c",
+        "inner_scope_id": "scope-dd83c3fe23bd",
+        "outer_scope_id": "scope-dc01731a58a3"
+      },
+      {
+        "name": "strategy_params",
+        "shadowing_symbol_id": "sym-0b84024d9c09d237",
+        "shadowed_symbol_id": "sym-2e5519aa03eec03a",
+        "inner_scope_id": "scope-dd83c3fe23bd",
+        "outer_scope_id": "scope-dc01731a58a3"
+      },
+      {
+        "name": "risk_params",
+        "shadowing_symbol_id": "sym-88e4c90fecd95ec3",
+        "shadowed_symbol_id": "sym-3da33d543308f3ad",
+        "inner_scope_id": "scope-dd83c3fe23bd",
+        "outer_scope_id": "scope-dc01731a58a3"
+      },
+      {
+        "name": "cost_params",
+        "shadowing_symbol_id": "sym-5dce3c19591b689e",
+        "shadowed_symbol_id": "sym-1460fbbce039509a",
+        "inner_scope_id": "scope-dd83c3fe23bd",
+        "outer_scope_id": "scope-dc01731a58a3"
+      },
+      {
+        "name": "kill_switch_params",
+        "shadowing_symbol_id": "sym-06a708c61d4f48bb",
+        "shadowed_symbol_id": "sym-022c911a34b69e7a",
+        "inner_scope_id": "scope-dd83c3fe23bd",
+        "outer_scope_id": "scope-dc01731a58a3"
+      },
+      {
+        "name": "__init__",
+        "shadowing_symbol_id": "sym-548d56b196ea2e0f",
+        "shadowed_symbol_id": "sym-ad0878b198b7ce0f",
+        "inner_scope_id": "scope-b476f4637926",
+        "outer_scope_id": "scope-60dab31da91d"
+      },
+      {
+        "name": "_signed_post",
+        "shadowing_symbol_id": "sym-6a07683309ad3b52",
+        "shadowed_symbol_id": "sym-c13cee801a87d3e9",
+        "inner_scope_id": "scope-b476f4637926",
+        "outer_scope_id": "scope-60dab31da91d"
+      },
+      {
+        "name": "get_balances",
+        "shadowing_symbol_id": "sym-9f1e4a4e03d352c5",
+        "shadowed_symbol_id": "sym-532febeeef0c51bb",
+        "inner_scope_id": "scope-b476f4637926",
+        "outer_scope_id": "scope-60dab31da91d"
+      },
+      {
+        "name": "create_order",
+        "shadowing_symbol_id": "sym-fd2f78c86b1e720d",
+        "shadowed_symbol_id": "sym-253fed229a05b09c",
+        "inner_scope_id": "scope-b476f4637926",
+        "outer_scope_id": "scope-60dab31da91d"
+      },
+      {
+        "name": "cancel_order",
+        "shadowing_symbol_id": "sym-d2e9461cc53e7277",
+        "shadowed_symbol_id": "sym-7feabb084d3d28fa",
+        "inner_scope_id": "scope-b476f4637926",
+        "outer_scope_id": "scope-60dab31da91d"
+      },
+      {
+        "name": "get_order_status",
+        "shadowing_symbol_id": "sym-9ecf3a0c26272fc8",
+        "shadowed_symbol_id": "sym-53e5d2e8ff0e7bd1",
+        "inner_scope_id": "scope-b476f4637926",
+        "outer_scope_id": "scope-60dab31da91d"
+      },
+      {
+        "name": "__init__",
+        "shadowing_symbol_id": "sym-6006e3702abfc4c2",
+        "shadowed_symbol_id": "sym-f32fafad57a3d38c",
+        "inner_scope_id": "scope-8ce33acd1ce6",
+        "outer_scope_id": "scope-9aa7238972e6"
+      },
+      {
+        "name": "submit_entry",
+        "shadowing_symbol_id": "sym-95d334c6915b9af3",
+        "shadowed_symbol_id": "sym-653694be4d850b68",
+        "inner_scope_id": "scope-8ce33acd1ce6",
+        "outer_scope_id": "scope-9aa7238972e6"
+      },
+      {
+        "name": "submit_exit",
+        "shadowing_symbol_id": "sym-bba24075a36efc8b",
+        "shadowed_symbol_id": "sym-6c73e74dc85a7308",
+        "inner_scope_id": "scope-8ce33acd1ce6",
+        "outer_scope_id": "scope-9aa7238972e6"
+      },
+      {
+        "name": "_submit_with_retry",
+        "shadowing_symbol_id": "sym-63d1b08c0c4c1d02",
+        "shadowed_symbol_id": "sym-b260876c58faa508",
+        "inner_scope_id": "scope-8ce33acd1ce6",
+        "outer_scope_id": "scope-9aa7238972e6"
+      },
+      {
+        "name": "df",
+        "shadowing_symbol_id": "sym-630c6aa8fb5adb21",
+        "shadowed_symbol_id": "sym-c840db2b3ed1b2af",
+        "inner_scope_id": "scope-b5bf19bc1e55",
+        "outer_scope_id": "scope-a2610e05e608"
+      },
+      {
+        "name": "record_api_error",
+        "shadowing_symbol_id": "sym-33846fb7d4f70894",
+        "shadowed_symbol_id": "sym-518be9cc06fb2bba",
+        "inner_scope_id": "scope-0ef766506129",
+        "outer_scope_id": "scope-05e4b686465d"
+      },
+      {
+        "name": "check_slippage",
+        "shadowing_symbol_id": "sym-da1e809eb5724deb",
+        "shadowed_symbol_id": "sym-c64164c86a04fd93",
+        "inner_scope_id": "scope-0ef766506129",
+        "outer_scope_id": "scope-05e4b686465d"
+      },
+      {
+        "name": "check_daily_loss",
+        "shadowing_symbol_id": "sym-064ee096e3e6d7c9",
+        "shadowed_symbol_id": "sym-16ff7b6ef5c73475",
+        "inner_scope_id": "scope-0ef766506129",
+        "outer_scope_id": "scope-05e4b686465d"
+      },
+      {
+        "name": "manual_halt",
+        "shadowing_symbol_id": "sym-4e241b2f1fbd574a",
+        "shadowed_symbol_id": "sym-c1041faa28b01860",
+        "inner_scope_id": "scope-0ef766506129",
+        "outer_scope_id": "scope-05e4b686465d"
+      },
+      {
+        "name": "_trigger_halt",
+        "shadowing_symbol_id": "sym-adb1c0f1561f0fb3",
+        "shadowed_symbol_id": "sym-ef81f84f8ca7d353",
+        "inner_scope_id": "scope-0ef766506129",
+        "outer_scope_id": "scope-05e4b686465d"
+      },
+      {
+        "name": "should_halt",
+        "shadowing_symbol_id": "sym-64defc2d57957790",
+        "shadowed_symbol_id": "sym-aa066ce1798a6081",
+        "inner_scope_id": "scope-0ef766506129",
+        "outer_scope_id": "scope-05e4b686465d"
+      },
+      {
+        "name": "halt_reason",
+        "shadowing_symbol_id": "sym-34c8c8216ef043f5",
+        "shadowed_symbol_id": "sym-bd87ad264b887832",
+        "inner_scope_id": "scope-0ef766506129",
+        "outer_scope_id": "scope-05e4b686465d"
+      },
+      {
+        "name": "reset",
+        "shadowing_symbol_id": "sym-331ab15cb98a0135",
+        "shadowed_symbol_id": "sym-87a70ab295ade4b7",
+        "inner_scope_id": "scope-0ef766506129",
+        "outer_scope_id": "scope-05e4b686465d"
+      },
+      {
+        "name": "record_trade",
+        "shadowing_symbol_id": "sym-073fa59d3c752510",
+        "shadowed_symbol_id": "sym-8110b9b909900d85",
+        "inner_scope_id": "scope-5630b9bbe657",
+        "outer_scope_id": "scope-b9a373f88a31"
+      },
+      {
+        "name": "estimated_tax_liability",
+        "shadowing_symbol_id": "sym-7f24b1ab3da4e21f",
+        "shadowed_symbol_id": "sym-99a12e5bd5d1f33d",
+        "inner_scope_id": "scope-5630b9bbe657",
+        "outer_scope_id": "scope-b9a373f88a31"
+      },
+      {
+        "name": "net_of_all_costs",
+        "shadowing_symbol_id": "sym-06cc562339cd45a0",
+        "shadowed_symbol_id": "sym-6a242636b2d38503",
+        "inner_scope_id": "scope-5630b9bbe657",
+        "outer_scope_id": "scope-b9a373f88a31"
+      },
+      {
+        "name": "summary",
+        "shadowing_symbol_id": "sym-8c419ed2d0227128",
+        "shadowed_symbol_id": "sym-b09b7e28d83a284a",
+        "inner_scope_id": "scope-5630b9bbe657",
+        "outer_scope_id": "scope-b9a373f88a31"
+      },
+      {
+        "name": "__init__",
+        "shadowing_symbol_id": "sym-3e3f281b0d57d148",
+        "shadowed_symbol_id": "sym-86c1cc9fdb911cd2",
+        "inner_scope_id": "scope-4aa9c40ddc15",
+        "outer_scope_id": "scope-29ddea950806"
+      },
+      {
+        "name": "_generate_signature",
+        "shadowing_symbol_id": "sym-fe202731ec123e74",
+        "shadowed_symbol_id": "sym-7552fcdd7a11114e",
+        "inner_scope_id": "scope-4aa9c40ddc15",
+        "outer_scope_id": "scope-29ddea950806"
+      },
+      {
+        "name": "_prepare_authenticated_request",
+        "shadowing_symbol_id": "sym-d263ea4715664f38",
+        "shadowed_symbol_id": "sym-6901d599e82007b2",
+        "inner_scope_id": "scope-4aa9c40ddc15",
+        "outer_scope_id": "scope-29ddea950806"
+      },
+      {
+        "name": "_handle_response",
+        "shadowing_symbol_id": "sym-dd9e92c713e1e9a6",
+        "shadowed_symbol_id": "sym-59ee2aaf4fa01b07",
+        "inner_scope_id": "scope-4aa9c40ddc15",
+        "outer_scope_id": "scope-29ddea950806"
+      },
+      {
+        "name": "post",
+        "shadowing_symbol_id": "sym-a143a7ceafd73a89",
+        "shadowed_symbol_id": "sym-e9bde7ad5559d485",
+        "inner_scope_id": "scope-4aa9c40ddc15",
+        "outer_scope_id": "scope-29ddea950806"
+      },
+      {
+        "name": "get_user_info",
+        "shadowing_symbol_id": "sym-04b56631d175a22a",
+        "shadowed_symbol_id": "sym-3fe1560511b3a6d5",
+        "inner_scope_id": "scope-4aa9c40ddc15",
+        "outer_scope_id": "scope-29ddea950806"
+      },
+      {
+        "name": "get_balances",
+        "shadowing_symbol_id": "sym-c7451501cae5602b",
+        "shadowed_symbol_id": "sym-843f24a17baab8fa",
+        "inner_scope_id": "scope-4aa9c40ddc15",
+        "outer_scope_id": "scope-29ddea950806"
+      },
+      {
+        "name": "create_order",
+        "shadowing_symbol_id": "sym-1cfa88b8b57c3ae0",
+        "shadowed_symbol_id": "sym-af5903604049732c",
+        "inner_scope_id": "scope-4aa9c40ddc15",
+        "outer_scope_id": "scope-29ddea950806"
+      },
+      {
+        "name": "cancel_order",
+        "shadowing_symbol_id": "sym-5f2824d34e471f4d",
+        "shadowed_symbol_id": "sym-5f50642b5f26b8e1",
+        "inner_scope_id": "scope-4aa9c40ddc15",
+        "outer_scope_id": "scope-29ddea950806"
+      },
+      {
+        "name": "get_orders",
+        "shadowing_symbol_id": "sym-9ae82ba81dd42397",
+        "shadowed_symbol_id": "sym-54b360256f5ae492",
+        "inner_scope_id": "scope-4aa9c40ddc15",
+        "outer_scope_id": "scope-29ddea950806"
+      },
+      {
+        "name": "close",
+        "shadowing_symbol_id": "sym-62d829942b307527",
+        "shadowed_symbol_id": "sym-95912c27d599c7be",
+        "inner_scope_id": "scope-4aa9c40ddc15",
+        "outer_scope_id": "scope-29ddea950806"
+      },
+      {
+        "name": "__enter__",
+        "shadowing_symbol_id": "sym-546ba4c06bffe853",
+        "shadowed_symbol_id": "sym-67f7c2bc30345398",
+        "inner_scope_id": "scope-4aa9c40ddc15",
+        "outer_scope_id": "scope-29ddea950806"
+      },
+      {
+        "name": "__exit__",
+        "shadowing_symbol_id": "sym-56c12e8e54a21176",
+        "shadowed_symbol_id": "sym-b5ef4f861fe1fea9",
+        "inner_scope_id": "scope-4aa9c40ddc15",
+        "outer_scope_id": "scope-29ddea950806"
+      },
+      {
+        "name": "config",
+        "shadowing_symbol_id": "sym-5f23b1f0b2c3b803",
+        "shadowed_symbol_id": "sym-1417c355c4765ca3",
+        "inner_scope_id": "scope-774c976de4ea",
+        "outer_scope_id": "scope-29ddea950806"
+      },
+      {
+        "name": "config",
+        "shadowing_symbol_id": "sym-5f23b1f0b2c3b803",
+        "shadowed_symbol_id": "sym-1417c355c4765ca3",
+        "inner_scope_id": "scope-939448f76629",
+        "outer_scope_id": "scope-29ddea950806"
+      },
+      {
+        "name": "__init__",
+        "shadowing_symbol_id": "sym-e691c5a3c8dcfd8b",
+        "shadowed_symbol_id": "sym-1e2d1333b7c1f067",
+        "inner_scope_id": "scope-51f2f7a1f9db",
+        "outer_scope_id": "scope-f0ce101a6db8"
+      },
+      {
+        "name": "_load_env",
+        "shadowing_symbol_id": "sym-3a15f3e7f150ca0f",
+        "shadowed_symbol_id": "sym-9b3e28beedfeaefa",
+        "inner_scope_id": "scope-51f2f7a1f9db",
+        "outer_scope_id": "scope-f0ce101a6db8"
+      },
+      {
+        "name": "_validate_credentials",
+        "shadowing_symbol_id": "sym-b7f5478c9d5c5f66",
+        "shadowed_symbol_id": "sym-1014ab82b4f15449",
+        "inner_scope_id": "scope-51f2f7a1f9db",
+        "outer_scope_id": "scope-f0ce101a6db8"
+      },
+      {
+        "name": "api_key_masked",
+        "shadowing_symbol_id": "sym-147539bc53f305de",
+        "shadowed_symbol_id": "sym-0a9a915c8d07f51b",
+        "inner_scope_id": "scope-51f2f7a1f9db",
+        "outer_scope_id": "scope-f0ce101a6db8"
+      },
+      {
+        "name": "api_secret_masked",
+        "shadowing_symbol_id": "sym-2b73ff83583a22a5",
+        "shadowed_symbol_id": "sym-519c896b30a39c28",
+        "inner_scope_id": "scope-51f2f7a1f9db",
+        "outer_scope_id": "scope-f0ce101a6db8"
+      },
+      {
+        "name": "_config",
+        "shadowing_symbol_id": "sym-71c80b9544205535",
+        "shadowed_symbol_id": "sym-380a2e2e3c79b570",
+        "inner_scope_id": "scope-8bf6a6da2b70",
+        "outer_scope_id": "scope-f0ce101a6db8"
+      },
+      {
+        "name": "_config",
+        "shadowing_symbol_id": "sym-4dc67c7f8cf0175c",
+        "shadowed_symbol_id": "sym-380a2e2e3c79b570",
+        "inner_scope_id": "scope-56661cf78f7e",
+        "outer_scope_id": "scope-f0ce101a6db8"
+      }
+    ]
+  },
+  "import_metrics": {
+    "total_imports": 465,
+    "resolved_internal": 4,
+    "resolved_stdlib": 63,
+    "resolved_external": 398,
+    "unresolved_count": 0,
+    "relative_count": 0,
+    "alias_count": 95,
+    "wildcard_count": 0,
+    "resolution_latency_us": 0.0,
+    "build_duration_ms": 14.581,
+    "memory_bytes": 160071680
+  },
+  "import_warnings": [],
+  "import_errors": [],
+  "reference_metrics": {
+    "total_references": 1908,
+    "resolved_count": 1906,
+    "unresolved_count": 2,
+    "read_count": 6,
+    "write_count": 1559,
+    "call_count": 0,
+    "attribute_count": 0,
+    "definition_count": 1166,
+    "resolution_latency_us": 0.0,
+    "build_duration_ms": 211.648,
+    "memory_bytes": 162304000
+  },
+  "reference_warnings": [
+    "Unresolved reference to 'Exception' in 'app/exceptions.py' (line 3)",
+    "Unresolved reference to 'Exception' in 'btc-autotrader/execution/coindcx_client.py' (line 8)"
+  ],
+  "reference_errors": [],
+  "phase_durations_ms": {
+    "phase1_discovery": 9.804799999983516,
+    "phase2_parser": 6295.981200000824,
+    "phase3_semantic": 1664.986300002056,
+    "phase4_symbol_table": 59.118799999851035,
+    "phase5_scope_resolution": 526.9731000007596,
+    "phase6_import_resolution": 14.878500001941575,
+    "phase7_reference_resolution": 212.5104000006104,
+    "total": 8785.166999998182
+  },
+  "peak_memory_mb": 154.78515625
+}

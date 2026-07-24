@@ -2,14 +2,19 @@
 analysis/import_resolution/import_resolver.py
 ---------------------------------------------
 Phase 4.6 — Import Resolution Coordinator.
+Phase 4.7.1 — Re-Export Symbol Resolution Integration.
 
-Main entry point that coordinates `ModuleIndex`, `ImportLinker`, and `ImportValidator`
-to resolve cross-file import statements across a repository.
+Main entry point that coordinates `ModuleIndex`, `ImportLinker`, `ImportValidator`,
+and (Phase 4.7.1) the `ReExportIndex` / `ReExportResolver` to resolve cross-file
+import statements across a repository, including package-level re-exports.
 
 Design Principles
 -----------------
 - **Clean Architecture Pipeline**: Coordinates module indexing, symbol linking, and telemetry.
 - **Robust Classification**: Classifies imports into Internal, Standard Library, or External.
+- **Re-Export Awareness**: Resolves symbols re-exported through __init__.py files before
+  emitting UNRESOLVED_SYMBOL, enabling full resolution of patterns like
+  `from fastapi import FastAPI`.
 """
 
 from __future__ import annotations
@@ -33,6 +38,9 @@ from analysis.import_resolution.import_index import ImportIndex
 from analysis.import_resolution.import_linker import ImportLinker
 from analysis.import_resolution.import_validator import ImportValidator
 from analysis.import_resolution.module_index import ModuleIndex
+from analysis.re_export_resolution.re_export_builder import ReExportBuilder
+from analysis.re_export_resolution.re_export_index import ReExportIndex
+from analysis.re_export_resolution.re_export_resolver import ReExportResolver
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -52,6 +60,8 @@ class ImportResolver:
         self.repository_id = repository_id
         self._linker = ImportLinker()
         self._validator = ImportValidator()
+        self._re_export_builder = ReExportBuilder()
+        self._re_export_resolver = ReExportResolver()
 
     def resolve_result(
         self,
@@ -92,7 +102,12 @@ class ImportResolver:
             if sym.kind == "module" and sym.file_path:
                 module_index.register_file(sym.file_path, sym.fqn)
 
-        # 2. Extract ImportRecords & Resolve Each Import
+        # 2. Phase 4.7.1 Pre-Pass: Build Re-Export Index from all __init__.py files
+        export_index = self._build_re_export_index(
+            extraction_results, module_index, symbol_table
+        )
+
+        # 3. Extract ImportRecords & Resolve Each Import
         import_index = ImportIndex()
         metrics = ImportMetrics()
 
@@ -103,7 +118,9 @@ class ImportResolver:
             for imp in res.module.imports:
                 records = self._convert_extracted_import(imp, source_file, source_module_fqn)
                 for rec in records:
-                    resolution = self._resolve_single_import(rec, module_index, symbol_table)
+                    resolution = self._resolve_single_import(
+                        rec, module_index, symbol_table, export_index
+                    )
                     import_index.add_import(rec, resolution)
 
                     # Update Metrics
@@ -124,7 +141,7 @@ class ImportResolver:
                     else:
                         metrics.unresolved_count += 1
 
-        # 3. Validate Import Graph Integrity
+        # 4. Validate Import Graph Integrity
         val_report = self._validator.validate(import_index, module_index, symbol_table)
         warnings = [i.message for i in val_report.issues if i.severity == "warning"]
         errors = [i.message for i in val_report.issues if i.severity == "error"]
@@ -159,13 +176,16 @@ class ImportResolver:
 
         # Case A: plain module import (e.g. `import os`, `import numpy as np`)
         if not imp.imported_names:
-            alias = imp.aliases[0] if imp.aliases else None
+            if isinstance(imp.aliases, dict):
+                alias = imp.aliases.get(imp.module) if imp.module else (next(iter(imp.aliases.values()), None) if imp.aliases else None)
+            else:
+                alias = imp.aliases[0] if imp.aliases else None
             kind = ImportKind.ALIAS if alias else (ImportKind.RELATIVE if is_relative else ImportKind.MODULE)
 
             records.append(
                 ImportRecord(
                     kind=kind,
-                    statement_snippet=imp.module,
+                    statement_snippet=imp.module or "",
                     source_file_path=source_file,
                     source_module_fqn=source_module_fqn,
                     imported_module_name=imp.module,
@@ -181,7 +201,10 @@ class ImportResolver:
         # Case B: from-import (e.g. `from app.auth import AuthService, User as U`, `from models import *`)
         else:
             for idx, name in enumerate(imp.imported_names):
-                alias = imp.aliases[idx] if idx < len(imp.aliases) else None
+                if isinstance(imp.aliases, dict):
+                    alias = imp.aliases.get(name)
+                else:
+                    alias = imp.aliases[idx] if idx < len(imp.aliases) else None
                 is_wildcard = name == "*"
 
                 if is_wildcard:
@@ -193,7 +216,8 @@ class ImportResolver:
                 else:
                     kind = ImportKind.FROM_IMPORT
 
-                snippet = f"from {imp.module} import {name}" + (f" as {alias}" if alias else "")
+                mod_str = imp.module or ""
+                snippet = f"from {mod_str} import {name}" + (f" as {alias}" if alias else "")
 
                 records.append(
                     ImportRecord(
@@ -213,13 +237,56 @@ class ImportResolver:
 
         return records
 
+    def _build_re_export_index(
+        self,
+        extraction_results: List[SemanticExtractionResult],
+        module_index: ModuleIndex,
+        symbol_table: SymbolTable,
+    ) -> ReExportIndex:
+        """
+        Phase 4.7.1 Pre-Pass: scan all __init__.py files and build a ReExportIndex.
+
+        Parameters
+        ----------
+        extraction_results:
+            All SemanticExtractionResult objects in the repository.
+        module_index:
+            Pre-built ModuleIndex.
+        symbol_table:
+            Repository SymbolTable.
+
+        Returns
+        -------
+        ReExportIndex
+            Populated index ready for O(1) lookup.
+        """
+        try:
+            export_records = self._re_export_builder.build_from_results(
+                extraction_results, module_index
+            )
+            export_index = ReExportIndex()
+            export_index.build(export_records)
+            logger.debug(
+                "Re-export index built: %d export records across %d packages",
+                len(export_records),
+                len(export_index.all_package_fqns()),
+            )
+            return export_index
+        except Exception as exc:
+            logger.warning(
+                "Re-export index build failed (continuing without re-export resolution): %s",
+                exc,
+            )
+            return ReExportIndex()
+
     def _resolve_single_import(
         self,
         rec: ImportRecord,
         module_index: ModuleIndex,
         symbol_table: SymbolTable,
+        export_index: Optional[ReExportIndex] = None,
     ) -> ImportResolution:
-        """Resolve a single `ImportRecord` against `ModuleIndex` and `SymbolTable`."""
+        """Resolve a single `ImportRecord` against `ModuleIndex`, `SymbolTable`, and `ReExportIndex`."""
         # 1. Handle Relative Module Computation
         if rec.is_relative:
             target_module_fqn = module_index.resolve_relative_import(
@@ -268,7 +335,32 @@ class ImportResolver:
                         target_symbol_fqn=sym.fqn,
                     )
                 else:
-                    # Target module found, but symbol missing
+                    # Target module found, but symbol missing in direct lookup.
+                    # Phase 4.7.1: Attempt re-export chain resolution before giving up.
+                    if export_index and target_module_fqn:
+                        sym, resolved_fqn = self._re_export_resolver.resolve(
+                            target_module_fqn,
+                            rec.imported_symbol_name,
+                            export_index,
+                            symbol_table,
+                        )
+                        if sym:
+                            logger.debug(
+                                "Re-export resolved: %s.%s → %s",
+                                target_module_fqn,
+                                rec.imported_symbol_name,
+                                resolved_fqn,
+                            )
+                            return ImportResolution(
+                                import_id=rec.id,
+                                status=ImportResolutionStatus.RESOLVED_INTERNAL,
+                                target_module_fqn=target_module_fqn,
+                                target_file_path=target_file_path,
+                                target_symbol_id=sym.id,
+                                target_symbol_fqn=resolved_fqn,
+                            )
+
+                    # Exhausted all strategies — symbol is genuinely unresolvable
                     return ImportResolution(
                         import_id=rec.id,
                         status=ImportResolutionStatus.UNRESOLVED_SYMBOL,

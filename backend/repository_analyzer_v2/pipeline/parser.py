@@ -34,7 +34,6 @@ from core.parser_manager import ParserManager
 from core.scheduler import Scheduler
 from models.parser import ParserLanguage, ParserResult, ParserStatus
 from pipeline.stage import PipelineContext, Stage
-from plugins.parser_plugin import DummyParserPlugin
 
 logger = logging.getLogger(__name__)
 
@@ -61,6 +60,8 @@ def _seed_parser_manager(manager: ParserManager, languages: Set[ParserLanguage])
     """
     Register a `DummyParserPlugin` for each language not already in the `ParserManager`.
     """
+    from plugins.parser_plugin import DummyParserPlugin
+
     for lang in languages:
         if lang == ParserLanguage.UNKNOWN:
             continue

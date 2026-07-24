@@ -6,7 +6,6 @@ from typing import List, Optional
 from config.settings import AnalyzerSettings, get_settings
 from core.plugin_manager import PluginManager
 from models.health import ComponentHealth, HealthReport, HealthStatus
-from pipeline.pipeline import DEFAULT_STAGES, Pipeline
 from storage.postgres import DatabaseManager
 from utils.logger import get_logger
 from utils.metrics import MetricsCollector
@@ -191,6 +190,7 @@ class HealthChecker:
         details = {}
 
         try:
+            from pipeline.pipeline import DEFAULT_STAGES, Pipeline
             pipeline = Pipeline()
             details["default_stages_count"] = len(pipeline._stages)
             details["stage_names"] = [s.name for s in pipeline._stages]

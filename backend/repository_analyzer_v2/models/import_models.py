@@ -62,7 +62,7 @@ class ImportRecord(BaseModel):
     statement_snippet: str = Field(default="", description="Original import source code snippet")
     source_file_path: str = Field(..., description="Source file path relative to repository root")
     source_module_fqn: str = Field(..., description="Source module FQN, e.g. 'app.services.user'")
-    imported_module_name: str = Field(..., description="Target imported module name, e.g. 'app.auth' or 'os'")
+    imported_module_name: Optional[str] = Field(default=None, description="Target imported module name, e.g. 'app.auth' or 'os'")
     imported_symbol_name: Optional[str] = Field(default=None, description="Imported symbol name if 'from' import, e.g. 'AuthService'")
     alias: Optional[str] = Field(default=None, description="Import alias name if present, e.g. 'np'")
     relative_level: int = Field(default=0, ge=0, description="Relative dot level: 0 for absolute, 1 for '.', 2 for '..'")
