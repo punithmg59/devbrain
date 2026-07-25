@@ -27,12 +27,15 @@ class SymbolID(BaseModel):
         "frozen": True
     }
 
-    @field_validator("value")
+    @field_validator("value", mode="before")
     @classmethod
-    def _validate_value(cls, v: str) -> str:
-        if not v or not v.startswith("sym_"):
+    def _validate_value(cls, v: Any) -> str:
+        if isinstance(v, dict) and "value" in v:
+            v = v["value"]
+        v_str = str(v)
+        if not v_str or not v_str.startswith("sym_"):
             raise SymbolIDError(f"SymbolID value must be non-empty and start with 'sym_'. Got: '{v}'")
-        return v
+        return v_str
 
     def __str__(self) -> str:
         return self.value
@@ -60,12 +63,15 @@ class NamespaceID(BaseModel):
         "frozen": True
     }
 
-    @field_validator("value")
+    @field_validator("value", mode="before")
     @classmethod
-    def _validate_value(cls, v: str) -> str:
-        if not v or not v.startswith("ns_"):
+    def _validate_value(cls, v: Any) -> str:
+        if isinstance(v, dict) and "value" in v:
+            v = v["value"]
+        v_str = str(v)
+        if not v_str or not v_str.startswith("ns_"):
             raise SymbolIDError(f"NamespaceID value must be non-empty and start with 'ns_'. Got: '{v}'")
-        return v
+        return v_str
 
     def __str__(self) -> str:
         return self.value
