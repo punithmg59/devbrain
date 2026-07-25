@@ -1,0 +1,43 @@
+"""
+core/symbol_table/interfaces.py
+--------------------------------
+Public Interface Protocols for SymbolTable contracts.
+"""
+
+from __future__ import annotations
+
+from typing import Iterator, List, Optional, Protocol, Union, runtime_checkable
+
+from core.namespaces.tree import NamespaceTree
+from core.symbol_identity import CanonicalSymbol, CanonicalSymbolCollection
+from core.symbols import Language, SymbolID, SymbolKind, VisibilityKind
+from core.symbols.ids import NamespaceID
+from core.symbols.interfaces import IQualifiedName
+
+
+@runtime_checkable
+class ISymbolTable(Protocol):
+    """Protocol for Immutable SymbolTable Container."""
+    @property
+    def repository_id(self) -> str: ...
+    def get_by_symbol_id(self, id: Union[SymbolID, str]) -> Optional[CanonicalSymbol]: ...
+    def get_by_qualified_name(self, fqn: Union[str, IQualifiedName]) -> Optional[CanonicalSymbol]: ...
+    def get_by_name(self, name: str) -> List[CanonicalSymbol]: ...
+    def get_namespace_symbols(self, namespace_id: Union[NamespaceID, str]) -> List[CanonicalSymbol]: ...
+    def get_file_symbols(self, file_path: str) -> List[CanonicalSymbol]: ...
+    def get_language_symbols(self, language: Union[Language, str]) -> List[CanonicalSymbol]: ...
+    def get_symbols_by_kind(self, kind: Union[SymbolKind, str]) -> List[CanonicalSymbol]: ...
+    def get_visible_symbols(self, visibility: Union[VisibilityKind, str]) -> List[CanonicalSymbol]: ...
+    def contains(self, key: Union[SymbolID, str, IQualifiedName]) -> bool: ...
+    def count(self) -> int: ...
+    def iterate(self) -> Iterator[CanonicalSymbol]: ...
+
+
+@runtime_checkable
+class ISymbolTableBuilderFacade(Protocol):
+    """Protocol for Symbol Table Builder Facade."""
+    def build_symbol_table(
+        self,
+        collection: CanonicalSymbolCollection,
+        tree: NamespaceTree
+    ) -> ISymbolTable: ...

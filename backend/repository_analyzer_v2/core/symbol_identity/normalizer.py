@@ -11,7 +11,7 @@ from typing import Optional
 from core.namespaces.models import NamespaceNode
 from core.namespaces.tree import NamespaceTree
 from core.symbol_extractor import RawSymbol
-from core.symbols import Accessibility, ModifierSet, QualifiedName, Visibility
+from core.symbols import Accessibility, ModifierSet, QualifiedName, Visibility, VisibilityKind
 
 
 class QualifiedNameNormalizer:
@@ -43,7 +43,7 @@ class LanguageSymbolNormalizer:
     @classmethod
     def normalize_visibility(cls, raw_symbol: RawSymbol) -> Visibility:
         """Normalize visibility modifiers."""
-        if raw_symbol.visibility:
+        if raw_symbol.visibility and raw_symbol.visibility.kind != VisibilityKind.UNKNOWN:
             return raw_symbol.visibility
         name = raw_symbol.name
         if name.startswith("_") and not name.startswith("__"):
