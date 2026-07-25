@@ -85,10 +85,10 @@ class PythonSymbolExtractor(AbstractSymbolExtractor):
                 is_async = True
             elif ntype in ("assignment", "assign", "ann_assign", "variable_declaration") and name:
                 sym_kind = SymbolKind.CONSTANT if name.isupper() else (SymbolKind.FIELD if parent_kind == SymbolKind.CLASS else SymbolKind.VARIABLE)
-            elif ntype in ("import", "import_from", "import_statement"):
+            elif ntype in ("import", "import_from", "import_statement", "import_from_statement"):
                 sym_kind = SymbolKind.IMPORT
                 if not name:
-                    name = ndict.get("value") or "import"
+                    name = ndict.get("module") or ndict.get("name") or ndict.get("value") or "import"
             elif ntype in ("type_alias", "type_alias_statement") and name:
                 sym_kind = SymbolKind.TYPE_ALIAS
 
