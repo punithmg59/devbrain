@@ -1,0 +1,49 @@
+"""
+core/edges/interfaces.py
+-------------------------
+Public Interface Protocols for Edge contracts.
+"""
+
+from __future__ import annotations
+
+from typing import List, Optional, Protocol, Union, runtime_checkable
+
+from core.edges.enums import EdgeDirection, EdgeKind, EdgeStrength
+from core.edges.ids import EdgeID
+from core.symbols import Language, SymbolID
+
+
+@runtime_checkable
+class IEdge(Protocol):
+    """Protocol for Edge Entity."""
+    @property
+    def id(self) -> EdgeID: ...
+    @property
+    def source_symbol_id(self) -> SymbolID: ...
+    @property
+    def target_symbol_id(self) -> SymbolID: ...
+    @property
+    def kind(self) -> EdgeKind: ...
+    @property
+    def direction(self) -> EdgeDirection: ...
+    @property
+    def strength(self) -> EdgeStrength: ...
+    @property
+    def confidence(self) -> float: ...
+    @property
+    def language(self) -> Language: ...
+    @property
+    def repository_id(self) -> str: ...
+
+
+@runtime_checkable
+class IEdgeCollection(Protocol):
+    """Protocol for EdgeCollection Container."""
+    @property
+    def repository_id(self) -> str: ...
+    @property
+    def edges(self) -> List[IEdge]: ...
+    def get_edge(self, id: Union[EdgeID, str]) -> Optional[IEdge]: ...
+    def get_outgoing_edges(self, source_symbol_id: Union[SymbolID, str]) -> List[IEdge]: ...
+    def get_incoming_edges(self, target_symbol_id: Union[SymbolID, str]) -> List[IEdge]: ...
+    def get_edges_by_kind(self, kind: Union[EdgeKind, str]) -> List[IEdge]: ...
