@@ -14,10 +14,9 @@ from core.dependency_graph.graph import DependencyGraph
 from core.dependency_graph.indexes import DependencyGraphIndexes
 from core.dependency_graph.statistics import DependencyGraphStatistics
 from core.dependency_graph.validator import DependencyGraphValidator
-from core.edges import Edge, EdgeCollection, EdgeID, EdgeKind
+from core.edges import Edge, EdgeCollection, EdgeID
 from core.symbol_builder import SemanticRepository
 from core.symbol_identity import CanonicalSymbol
-from core.symbols import Language, SymbolKind
 
 
 class DependencyGraphBuilder:
@@ -49,21 +48,24 @@ class DependencyGraphBuilder:
 
         # 2. Build Multi-Dimensional Indexes using String Keys
         nodes_by_id: Dict[str, CanonicalSymbol] = {}
-        nodes_by_kind: Dict[SymbolKind, List[str]] = {}
+        nodes_by_kind: Dict[str, List[str]] = {}
         nodes_by_file: Dict[str, List[str]] = {}
-        nodes_by_language: Dict[Language, List[str]] = {}
+        nodes_by_language: Dict[str, List[str]] = {}
 
         for sym in semantic_repository.canonical_symbols.symbols:
             sid_str = sym.id.value
+            kind_str = sym.kind.value
+            lang_str = sym.language.value
+
             nodes_by_id[sid_str] = sym
-            nodes_by_kind.setdefault(sym.kind, []).append(sid_str)
+            nodes_by_kind.setdefault(kind_str, []).append(sid_str)
             nodes_by_file.setdefault(sym.file_path, []).append(sid_str)
-            nodes_by_language.setdefault(sym.language, []).append(sid_str)
+            nodes_by_language.setdefault(lang_str, []).append(sid_str)
 
         edges_by_id: Dict[str, Edge] = {}
         outgoing_edges: Dict[str, List[str]] = {}
         incoming_edges: Dict[str, List[str]] = {}
-        edges_by_kind: Dict[EdgeKind, List[str]] = {}
+        edges_by_kind: Dict[str, List[str]] = {}
         edges_by_file: Dict[str, List[str]] = {}
 
         edges_by_kind_counts: Dict[str, int] = {}
@@ -72,15 +74,15 @@ class DependencyGraphBuilder:
             eid_str = edge.id.value
             src_str = edge.source_symbol_id.value
             tgt_str = edge.target_symbol_id.value
+            edge_kind_str = edge.kind.value
 
             edges_by_id[eid_str] = edge
             outgoing_edges.setdefault(src_str, []).append(eid_str)
             incoming_edges.setdefault(tgt_str, []).append(eid_str)
-            edges_by_kind.setdefault(edge.kind, []).append(eid_str)
+            edges_by_kind.setdefault(edge_kind_str, []).append(eid_str)
             edges_by_file.setdefault(edge.file_path, []).append(eid_str)
 
-            kind_str = edge.kind.value
-            edges_by_kind_counts[kind_str] = edges_by_kind_counts.get(kind_str, 0) + 1
+            edges_by_kind_counts[edge_kind_str] = edges_by_kind_counts.get(edge_kind_str, 0) + 1
 
         indexes = DependencyGraphIndexes(
             nodes_by_id=nodes_by_id,
@@ -102,8 +104,8 @@ class DependencyGraphBuilder:
         if total_nodes > 1:
             density = total_edges / float(total_nodes * (total_nodes - 1))
 
-        nodes_by_lang_counts = {lang.value: len(sids) for lang, sids in nodes_by_language.items()}
-        nodes_by_kind_counts = {kind.value: len(sids) for kind, sids in nodes_by_kind.items()}
+        nodes_by_lang_counts = {lang_str: len(sids) for lang_str, sids in nodes_by_language.items()}
+        nodes_by_kind_counts = {kind_str: len(sids) for kind_str, sids in nodes_by_kind.items()}
 
         stats = DependencyGraphStatistics(
             total_nodes=total_nodes,

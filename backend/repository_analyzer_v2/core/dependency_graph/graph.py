@@ -58,9 +58,10 @@ class DependencyGraph(BaseModel):
         edge_ids = self.indexes.incoming_edges.get(key, [])
         return [self.indexes.edges_by_id[eid] for eid in edge_ids if eid in self.indexes.edges_by_id]
 
-    def get_edges_by_kind(self, kind: EdgeKind) -> List[Edge]:
+    def get_edges_by_kind(self, kind: Union[EdgeKind, str]) -> List[Edge]:
         """Fetch all relationship edges of a specific EdgeKind in O(1) time."""
-        edge_ids = self.indexes.edges_by_kind.get(kind, [])
+        key = kind.value if isinstance(kind, EdgeKind) else str(kind)
+        edge_ids = self.indexes.edges_by_kind.get(key, [])
         return [self.indexes.edges_by_id[eid] for eid in edge_ids if eid in self.indexes.edges_by_id]
 
     def get_file_nodes(self, file_path: str) -> List[CanonicalSymbol]:
