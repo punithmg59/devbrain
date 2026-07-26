@@ -1,25 +1,22 @@
 """
-Model package for Graph Storage value objects, descriptors, and domain enums.
+Domain model value objects, enums, and data contracts for Graph Storage.
 """
 
 from graph_storage.model.enums import ConsistencyModel, LogLevel, ProbePolicy
 from graph_storage.model.value_objects import (
-    StorageKey,
-    SegmentId,
-    PartitionId,
-    SnapshotId,
-    VersionRef,
-    LeaseHandle,
-    TransactionHandle,
-    StorageHealth,
-    CacheStatistics,
     ArtifactHeader,
-    SegmentMetadata,
+    CacheStatistics,
+    LeaseHandle,
+    PartitionId,
     SegmentDescriptor,
-    MetricRecord,
-    LogRecord,
-    StorageEvent,
-    TraceContext,
+    SegmentId,
+    SegmentMetadata,
+    SnapshotId,
+    StorageHealth,
+    StorageKey,
+    TransactionHandle,
+    TransactionId,
+    VersionRef,
 )
 
 __all__ = [
@@ -30,6 +27,7 @@ __all__ = [
     "SegmentId",
     "PartitionId",
     "SnapshotId",
+    "TransactionId",
     "VersionRef",
     "LeaseHandle",
     "TransactionHandle",
@@ -38,8 +36,4 @@ __all__ = [
     "ArtifactHeader",
     "SegmentMetadata",
     "SegmentDescriptor",
-    "MetricRecord",
-    "LogRecord",
-    "StorageEvent",
-    "TraceContext",
 ]

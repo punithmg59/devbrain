@@ -3,24 +3,25 @@ ObservabilityEmitter abstract interface.
 """
 
 from abc import ABC, abstractmethod
-from graph_storage.model import MetricRecord, StorageEvent, LogRecord, TraceContext
+from typing import Any
+from graph_storage.diagnostics.tracing_manager import TraceContext
 
 
 class ObservabilityEmitter(ABC):
     """Abstract interface for unified metric, event, log, and trace observability."""
 
     @abstractmethod
-    def emit_metric(self, record: MetricRecord) -> None:
+    def emit_metric(self, record: Any) -> None:
         """Emit a structured numerical metric record."""
         ...
 
     @abstractmethod
-    def emit_event(self, event: StorageEvent) -> None:
+    def emit_event(self, event: Any) -> None:
         """Emit a structured domain storage event."""
         ...
 
     @abstractmethod
-    def emit_log(self, record: LogRecord) -> None:
+    def emit_log(self, record: Any) -> None:
         """Emit a structured diagnostic log record."""
         ...
 

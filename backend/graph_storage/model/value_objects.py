@@ -32,6 +32,12 @@ class SnapshotId:
 
 
 @dataclass(frozen=True)
+class TransactionId:
+    """Immutable identifier for a storage transaction."""
+    value: str
+
+
+@dataclass(frozen=True)
 class VersionRef:
     """Immutable reference to a storage schema or snapshot version."""
     major: int
@@ -66,16 +72,16 @@ class StorageHealth:
 
 @dataclass(frozen=True)
 class CacheStatistics:
-    """Immutable operational cache metrics."""
+    """Immutable segment cache performance statistics."""
     hit_count: int
     miss_count: int
     eviction_count: int
-    total_bytes: int
+    total_bytes_cached: int
 
 
 @dataclass(frozen=True)
 class ArtifactHeader:
-    """Immutable metadata header for serialized storage artifacts."""
+    """Descriptor header embedded at the start of binary storage artifacts."""
     magic_bytes: bytes
     schema_version: VersionRef
     payload_size_bytes: int
@@ -84,7 +90,7 @@ class ArtifactHeader:
 
 @dataclass(frozen=True)
 class SegmentMetadata:
-    """Immutable descriptor metadata for a storage segment."""
+    """Metadata describing a single storage segment."""
     segment_id: SegmentId
     partition_id: PartitionId
     size_bytes: int
@@ -94,41 +100,6 @@ class SegmentMetadata:
 
 @dataclass(frozen=True)
 class SegmentDescriptor:
-    """Descriptor combining segment metadata with physical storage location."""
+    """Complete descriptor referencing a physical segment and its storage location."""
     metadata: SegmentMetadata
     storage_key: StorageKey
-
-
-@dataclass(frozen=True)
-class MetricRecord:
-    """Immutable telemetry metric record."""
-    name: str
-    value: float
-    timestamp_epoch_sec: float
-    tags: Dict[str, str]
-
-
-@dataclass(frozen=True)
-class LogRecord:
-    """Immutable diagnostic log record."""
-    level: LogLevel
-    message: str
-    timestamp_epoch_sec: float
-    context: Dict[str, str]
-
-
-@dataclass(frozen=True)
-class StorageEvent:
-    """Immutable domain event emitted by storage lifecycle operations."""
-    event_type: str
-    source: str
-    timestamp_epoch_sec: float
-    details: Dict[str, str]
-
-
-@dataclass(frozen=True)
-class TraceContext:
-    """Immutable tracing context for monitoring storage execution paths."""
-    trace_id: str
-    span_id: str
-    parent_span_id: Optional[str]
