@@ -1,5 +1,5 @@
 """
-SnapshotManager implementation orchestrating snapshot lifecycle and manifest associations.
+SnapshotManager implementation orchestrating snapshot lifecycle, builders, and manifest associations.
 """
 
 import time
@@ -9,8 +9,11 @@ from typing import List, Optional
 from graph_storage.exceptions import GraphStorageError, SegmentNotFoundError
 from graph_storage.manifest.manifest_manager import ManifestManager
 from graph_storage.manifest.manifest_repository import ManifestRepository
+from graph_storage.manifest.snapshot_builder import SnapshotBuilder
 from graph_storage.manifest.snapshot_descriptor import SnapshotDescriptor
+from graph_storage.manifest.snapshot_graph import SnapshotGraph
 from graph_storage.manifest.snapshot_history import SnapshotHistory
+from graph_storage.manifest.snapshot_policy import SnapshotPolicy
 from graph_storage.manifest.snapshot_repository import SnapshotRepository
 from graph_storage.manifest.snapshot_validator import SnapshotValidator
 from graph_storage.model import SegmentDescriptor, SnapshotId, StorageKey, VersionRef
@@ -26,13 +29,16 @@ class SnapshotManager:
         snapshot_repository: SnapshotRepository,
         manifest_repository: ManifestRepository,
         segment_repository: SegmentRepository,
+        policy: Optional[SnapshotPolicy] = None,
     ):
         self.snapshot_repository = snapshot_repository
         self.manifest_repository = manifest_repository
         self.segment_repository = segment_repository
+        self.policy = policy or SnapshotPolicy()
 
         self.manifest_manager = ManifestManager(manifest_repository, segment_repository)
         self.history_tracker = SnapshotHistory(snapshot_repository)
+        self.snapshot_graph = SnapshotGraph()
 
     def create_snapshot(
         self,
@@ -41,7 +47,7 @@ class SnapshotManager:
         version: VersionRef = VersionRef(1, 0, 0),
         parent_snapshot_id: Optional[SnapshotId] = None,
     ) -> SnapshotDescriptor:
-        """Create a complete point-in-time repository snapshot and associated manifest catalog."""
+        """Create a complete point-in-time repository snapshot using SnapshotBuilder."""
         if not segment_entries:
             raise GraphStorageError("Cannot create a snapshot with zero segment entries")
 
@@ -52,26 +58,29 @@ class SnapshotManager:
         checksum_input = f"{snapshot_id.value}:{manifest.checksum}:{total_size}".encode("utf-8")
         snapshot_checksum = IntegrityVerifier.generate_checksum(checksum_input)
 
-        descriptor = SnapshotDescriptor(
-            snapshot_id=snapshot_id,
-            repository_id=repository_id,
-            version=version,
-            created_time=time.time(),
-            segment_count=len(segment_entries),
-            total_size=total_size,
-            checksum=snapshot_checksum,
-            manifest_location=StorageKey(manifest.manifest_id),
-            parent_snapshot_id=parent_snapshot_id,
+        descriptor = (
+            SnapshotBuilder()
+            .set_snapshot_id(snapshot_id)
+            .set_repository_id(repository_id)
+            .set_version(version)
+            .set_segment_count(len(segment_entries))
+            .set_total_size(total_size)
+            .set_checksum(snapshot_checksum)
+            .set_manifest_location(StorageKey(manifest.manifest_id))
+            .set_parent_snapshot_id(parent_snapshot_id)
+            .build()
         )
 
         SnapshotValidator.validate_snapshot(descriptor)
         self.snapshot_repository.save_snapshot(descriptor)
+        self.snapshot_graph.register_snapshot(descriptor)
         return descriptor
 
     def load_snapshot(self, snapshot_id: SnapshotId) -> SnapshotDescriptor:
         """Load snapshot descriptor by ID."""
         descriptor = self.snapshot_repository.load_snapshot(snapshot_id)
         SnapshotValidator.validate_snapshot(descriptor)
+        self.snapshot_graph.register_snapshot(descriptor)
         return descriptor
 
     def delete_snapshot(self, snapshot_id: SnapshotId, delete_manifest: bool = True) -> bool:

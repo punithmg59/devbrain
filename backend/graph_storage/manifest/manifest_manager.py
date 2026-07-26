@@ -7,11 +7,11 @@ import uuid
 from typing import List
 
 from graph_storage.exceptions import GraphStorageError
+from graph_storage.manifest.manifest_builder import ManifestBuilder
 from graph_storage.manifest.manifest_descriptor import ManifestDescriptor
 from graph_storage.manifest.manifest_repository import ManifestRepository
 from graph_storage.manifest.snapshot_validator import SnapshotValidator
 from graph_storage.model import SegmentDescriptor, SnapshotId, VersionRef
-from graph_storage.segment.integrity_verifier import IntegrityVerifier
 from graph_storage.segment.segment_repository import SegmentRepository
 
 
@@ -28,21 +28,15 @@ class ManifestManager:
         segment_entries: List[SegmentDescriptor],
         schema_version: VersionRef = VersionRef(1, 0, 0),
     ) -> ManifestDescriptor:
-        """Create and persist a new manifest descriptor for segment entries."""
-        if not segment_entries:
-            raise GraphStorageError("Cannot create manifest with zero segment entries")
-
+        """Create and persist a new manifest descriptor using ManifestBuilder."""
         manifest_id = f"m_{uuid.uuid4().hex[:12]}"
-        checksum_payload = "".join(e.metadata.checksum for e in segment_entries).encode("utf-8")
-        manifest_checksum = IntegrityVerifier.generate_checksum(checksum_payload)
-
-        manifest = ManifestDescriptor(
-            manifest_id=manifest_id,
-            snapshot_id=snapshot_id,
-            schema_version=schema_version,
-            segment_entries=segment_entries,
-            checksum=manifest_checksum,
-            created_time=time.time(),
+        manifest = (
+            ManifestBuilder()
+            .set_manifest_id(manifest_id)
+            .set_snapshot_id(snapshot_id)
+            .set_schema_version(schema_version)
+            .add_segment_entries(segment_entries)
+            .build()
         )
 
         SnapshotValidator.validate_manifest(manifest)

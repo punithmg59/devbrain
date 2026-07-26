@@ -24,11 +24,25 @@ class SnapshotValidator:
 
     @classmethod
     def validate_manifest(cls, manifest: ManifestDescriptor) -> None:
-        """Validate manifest entries and structure."""
+        """Validate manifest entries, duplicate detection, and ordering."""
         if not manifest.manifest_id:
             raise GraphStorageError("Manifest ID cannot be empty")
         if not manifest.segment_entries:
             raise GraphStorageError("Manifest segment entries cannot be empty")
+
+        # Duplicate detection
+        seen_ids = set()
+        for entry in manifest.segment_entries:
+            seg_id = entry.metadata.segment_id
+            if seg_id in seen_ids:
+                raise GraphStorageError(f"Duplicate segment entry found in manifest: '{seg_id.value}'")
+            seen_ids.add(seg_id)
+
+        # Order verification
+        sorted_ids = sorted([e.metadata.segment_id.value for e in manifest.segment_entries])
+        actual_ids = [e.metadata.segment_id.value for e in manifest.segment_entries]
+        if actual_ids != sorted_ids:
+            raise GraphStorageError("Manifest segment entries are not deterministically ordered")
 
     @classmethod
     def validate_segment_references(cls, manifest: ManifestDescriptor, segment_repository: SegmentRepository) -> None:
