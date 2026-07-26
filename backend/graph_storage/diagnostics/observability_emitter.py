@@ -3,33 +3,33 @@ ObservabilityEmitter abstract interface.
 """
 
 from abc import ABC, abstractmethod
-from typing import Any, Dict, Optional
+from graph_storage.model import MetricRecord, StorageEvent, LogRecord, TraceContext
 
 
 class ObservabilityEmitter(ABC):
     """Abstract interface for unified metric, event, log, and trace observability."""
 
     @abstractmethod
-    def emit_metric(self, name: str, value: float, tags: Optional[Dict[str, str]] = None) -> None:
-        """Emit a numerical metric datapoint."""
+    def emit_metric(self, record: MetricRecord) -> None:
+        """Emit a structured numerical metric record."""
         ...
 
     @abstractmethod
-    def emit_event(self, name: str, payload: Dict[str, Any]) -> None:
-        """Emit a structured domain or storage event."""
+    def emit_event(self, event: StorageEvent) -> None:
+        """Emit a structured domain storage event."""
         ...
 
     @abstractmethod
-    def emit_log(self, level: str, message: str, context: Optional[Dict[str, Any]] = None) -> None:
+    def emit_log(self, record: LogRecord) -> None:
         """Emit a structured diagnostic log record."""
         ...
 
     @abstractmethod
-    def begin_trace(self, name: str) -> str:
-        """Begin an execution trace context and return a trace ID."""
+    def begin_trace(self, name: str) -> TraceContext:
+        """Begin an execution trace span and return its tracing context."""
         ...
 
     @abstractmethod
-    def end_trace(self, trace_id: str) -> None:
-        """End an active trace context given its trace ID."""
+    def end_trace(self, context: TraceContext) -> None:
+        """End an active tracing context."""
         ...

@@ -3,38 +3,39 @@ StorageBackend abstract interface.
 """
 
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List
+from typing import List
+from graph_storage.model import SegmentId, SegmentDescriptor, StorageHealth
 
 
 class StorageBackend(ABC):
-    """Abstract interface for physical storage backends."""
+    """Abstract interface for domain-driven physical storage backends."""
 
     @abstractmethod
-    def exists(self, key: str) -> bool:
-        """Check if an artifact exists in storage."""
+    def exists_segment(self, segment_id: SegmentId) -> bool:
+        """Check if a storage segment exists in physical storage."""
         ...
 
     @abstractmethod
-    def read(self, key: str) -> bytes:
-        """Read data bytes for the given storage key."""
+    def read_segment(self, segment_id: SegmentId) -> bytes:
+        """Read binary data for the specified storage segment."""
         ...
 
     @abstractmethod
-    def write(self, key: str, data: bytes) -> None:
-        """Write data bytes to the given storage key."""
+    def write_segment(self, segment_id: SegmentId, data: bytes) -> SegmentDescriptor:
+        """Write binary data for the specified storage segment and return its descriptor."""
         ...
 
     @abstractmethod
-    def delete(self, key: str) -> bool:
-        """Delete an artifact by storage key."""
+    def delete_segment(self, segment_id: SegmentId) -> bool:
+        """Delete a storage segment by its segment identifier."""
         ...
 
     @abstractmethod
-    def list(self, prefix: str = "") -> List[str]:
-        """List all storage keys matching the given prefix."""
+    def list_segments(self) -> List[SegmentDescriptor]:
+        """List descriptors for all available storage segments."""
         ...
 
     @abstractmethod
-    def health(self) -> Dict[str, Any]:
+    def health(self) -> StorageHealth:
         """Retrieve operational health details of the storage backend."""
         ...

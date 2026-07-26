@@ -3,24 +3,25 @@ SegmentCache abstract interface.
 """
 
 from abc import ABC, abstractmethod
-from typing import Any, Dict, Optional
+from typing import Optional
+from graph_storage.model import SegmentId, CacheStatistics
 
 
 class SegmentCache(ABC):
     """Abstract interface for storage segment caching."""
 
     @abstractmethod
-    def get(self, segment_id: str) -> Optional[bytes]:
-        """Retrieve a cached storage segment by ID if present."""
+    def get(self, segment_id: SegmentId) -> Optional[bytes]:
+        """Retrieve cached segment bytes by ID if present."""
         ...
 
     @abstractmethod
-    def put(self, segment_id: str, data: bytes) -> None:
+    def put(self, segment_id: SegmentId, data: bytes) -> None:
         """Insert or update a storage segment in the cache."""
         ...
 
     @abstractmethod
-    def invalidate(self, segment_id: str) -> bool:
+    def invalidate(self, segment_id: SegmentId) -> bool:
         """Invalidate and evict a specific storage segment from cache."""
         ...
 
@@ -30,6 +31,6 @@ class SegmentCache(ABC):
         ...
 
     @abstractmethod
-    def statistics(self) -> Dict[str, Any]:
-        """Retrieve cache metrics and resource utilization statistics."""
+    def statistics(self) -> CacheStatistics:
+        """Retrieve cache metrics and utilization statistics."""
         ...

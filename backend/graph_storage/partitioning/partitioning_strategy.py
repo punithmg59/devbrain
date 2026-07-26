@@ -3,23 +3,23 @@ PartitioningStrategy abstract interface.
 """
 
 from abc import ABC, abstractmethod
-from typing import Any, Dict
+from graph_storage.model import SegmentId, PartitionId, SegmentMetadata
 
 
 class PartitioningStrategy(ABC):
     """Abstract interface for artifact storage partitioning policies."""
 
     @abstractmethod
-    def choose_partition(self, artifact_id: str, metadata: Dict[str, Any]) -> str:
-        """Select a partition location for an artifact given its ID and metadata."""
+    def choose_partition(self, segment_id: SegmentId, metadata: SegmentMetadata) -> PartitionId:
+        """Select a partition location for a storage segment."""
         ...
 
     @abstractmethod
-    def partition_key(self, artifact_id: str) -> str:
-        """Generate the partition key for a given artifact ID."""
+    def partition_key(self, segment_id: SegmentId) -> PartitionId:
+        """Generate the partition identifier for a given segment ID."""
         ...
 
     @abstractmethod
-    def validate_partition(self, partition_key: str) -> bool:
-        """Validate whether a partition key satisfies strategy requirements."""
+    def validate_partition(self, partition_id: PartitionId) -> bool:
+        """Validate whether a partition identifier satisfies strategy requirements."""
         ...
