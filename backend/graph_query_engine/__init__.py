@@ -43,7 +43,21 @@ from graph_query_engine.errors import (
     TimeoutError,
     ValidationError,
 )
+from graph_query_engine.cost import (
+    CostEstimate,
+    CostEstimator,
+    CostReport,
+    GraphStatisticsMetadata,
+)
 from graph_query_engine.lifecycle import EngineState, LifecycleComponent
+from graph_query_engine.logical import LogicalPlan, LogicalPlanBuilder, LogicalPlanner
+from graph_query_engine.execution import (
+    ExecutionPlan,
+    ExecutionPlanBuilder,
+    ExecutionPlanner,
+    ExecutionStage,
+)
+from graph_query_engine.physical import PhysicalPlan, PhysicalPlanBuilder, PhysicalPlanner
 from graph_query_engine.types import (
     CorrelationId,
     DependencyType,
@@ -124,4 +138,22 @@ __all__ = [
     "IQueryEngineAPI",
     "IQueryExtension",
     "IQueryValidator",
+    # Logical Planner Surface
+    "LogicalPlanner",
+    "LogicalPlan",
+    "LogicalPlanBuilder",
+    # Cost Model Surface
+    "CostEstimator",
+    "CostEstimate",
+    "CostReport",
+    "GraphStatisticsMetadata",
+    # Physical Planner Surface
+    "PhysicalPlanner",
+    "PhysicalPlan",
+    "PhysicalPlanBuilder",
+    # Execution Plan Surface
+    "ExecutionPlanner",
+    "ExecutionPlan",
+    "ExecutionStage",
+    "ExecutionPlanBuilder",
 ]
