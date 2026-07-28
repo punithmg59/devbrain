@@ -18,9 +18,15 @@ from __future__ import annotations
 
 import importlib
 import time
-from typing import Callable, Dict, Optional
+from typing import Any, Callable, Dict, Optional
 
-from tree_sitter import Language
+try:
+    from tree_sitter import Language
+except ImportError:
+    class Language:  # type: ignore
+        def __init__(self, *args, **kwargs):
+            raise ImportError("tree_sitter C-binding unavailable")
+
 
 from models.parser import ParserLanguage
 from models.tree_sitter_models import GrammarVersion

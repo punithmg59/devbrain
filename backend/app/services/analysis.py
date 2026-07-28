@@ -9,8 +9,8 @@ from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import Edge, FolderTree, Node, Repo, RepoFile, User
-from app.services.analysis_collect import AnalysisPayload, collect_analysis_payload
 from app.services.repo_fetcher import cleanup_clone, clone_github_repo
+from app.services.v2_analyzer_adapter import run_v2_analysis_collection, AnalysisPayloadV2
 from app.utils.github import get_github_token
 
 logger = logging.getLogger(__name__)
@@ -111,8 +111,8 @@ async def run_repo_analysis(repo_id: UUID, user_id: UUID) -> None:
 
             cleanup_clean = await _clear_repo_analysis(db, repo.id)
 
-            payload: AnalysisPayload = await asyncio.wait_for(
-                asyncio.to_thread(collect_analysis_payload, clone_path),
+            payload = await asyncio.wait_for(
+                asyncio.to_thread(run_v2_analysis_collection, clone_path, str(repo.id)),
                 timeout=ANALYSIS_TIMEOUT_SECONDS,
             )
             stats = await _persist_analysis(db, repo, payload)
@@ -320,7 +320,7 @@ async def _clear_repo_analysis(db: AsyncSession, repo_id: UUID) -> bool:
     return clean
 
 
-async def _persist_analysis(db: AsyncSession, repo: Repo, payload: AnalysisPayload) -> dict:
+async def _persist_analysis(db: AsyncSession, repo: Repo, payload: AnalysisPayloadV2) -> dict:
     file_models: list[RepoFile] = []
     for f in payload.files:
         file_models.append(RepoFile(repo_id=repo.id, **f))

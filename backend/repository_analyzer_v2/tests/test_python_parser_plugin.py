@@ -638,6 +638,8 @@ class TestASTConverter:
         e.shutdown()
 
     def _parse(self, eng, src: bytes, path: str = "test.py") -> ParseTree:
+        if not eng.is_language_loaded("python"):
+            pytest.skip("tree-sitter-python grammar not loaded on this platform")
         return eng.parse("python", src, path)
 
     def test_convert_empty_module(self, eng):

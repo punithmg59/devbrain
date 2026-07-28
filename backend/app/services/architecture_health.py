@@ -57,6 +57,7 @@ class ArchitectureHealthService:
         
         # --- 2. Coupling Score ---
         # Based on many dependencies and imports.
+        # n.imports is an ARRAY column, not a relationship, so no lazy-loading risk
         avg_imports = sum(len(n.imports) if n.imports else 0 for n in nodes) / total_nodes
         coupling_raw = (avg_imports * 5) + (avg_degree * 5)
         coupling_score = max(0, min(100, int(100 - coupling_raw)))

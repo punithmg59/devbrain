@@ -98,43 +98,172 @@ async def test_connection() -> bool:
 # ── Startup schema validation ────────────────────────────────────
 
 
+# SQL keywords and function calls that must NOT be quoted when used as DEFAULT values.
+_PG_BARE_KEYWORDS: frozenset[str] = frozenset({
+    "NULL", "TRUE", "FALSE",
+    "NOW()", "CURRENT_TIMESTAMP", "CURRENT_DATE", "CURRENT_TIME",
+    "GEN_RANDOM_UUID()",
+})
+
+
 def _sqla_col_to_ddl(col) -> str:
-    """Convert a SQLAlchemy Column type to a Postgres DDL snippet."""
+    """Convert a SQLAlchemy Column object to a PostgreSQL DDL type + default snippet.
+
+    Handles:
+    - All common SQLAlchemy scalar types (Integer, Float, Boolean, BigInteger,
+      String, Text, DateTime, UUID, JSONB, ARRAY).
+    - server_default values of all kinds: numeric literals, boolean keywords,
+      SQL functions (now(), gen_random_uuid()), cast expressions ('{}'::jsonb),
+      and plain string literals that require quoting ('low', 'pending', etc.).
+    - ARRAY element type is preserved (e.g. ARRAY(String) → TEXT[]).
+    - String columns without an explicit length are mapped to TEXT.
+    - nullable=False columns get NOT NULL appended.
+    """
+    from sqlalchemy import (
+        BigInteger,
+        Boolean,
+        DateTime,
+        Float,
+        Integer,
+        String,
+        Text,
+    )
     from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
-    from sqlalchemy import Boolean, DateTime, Float, Integer, String, Text, BigInteger
 
     col_type = type(col.type)
-    if col_type is Text or (col_type is String and (col.type.length or 0) > 500):
-        ddl = "TEXT"
-    elif col_type is String:
-        ddl = f"VARCHAR({col.type.length})"
-    elif col_type is Integer:
-        ddl = "INTEGER"
-    elif col_type is BigInteger:
-        ddl = "BIGINT"
-    elif col_type is Float:
-        ddl = "FLOAT"
-    elif col_type is Boolean:
-        ddl = "BOOLEAN"
-    elif col_type is DateTime:
-        ddl = "TIMESTAMP WITH TIME ZONE" if col.type.timezone else "TIMESTAMP"
-    elif col_type is UUID:
-        ddl = "UUID"
-    elif col_type is JSONB:
-        ddl = "JSONB"
-    elif col_type is ARRAY:
-        ddl = "VARCHAR[]"
-    else:
-        ddl = "TEXT"  # safe fallback
 
-    # Add DEFAULT clause if server_default is set
+    # ------------------------------------------------------------------
+    # Step 1: Resolve the PostgreSQL type string.
+    # ------------------------------------------------------------------
+    if col_type is Text:
+        pg_type = "TEXT"
+    elif col_type is String:
+        # String() with no length → use TEXT to avoid VARCHAR(None) crash.
+        length = col.type.length
+        pg_type = "TEXT" if length is None or length > 500 else f"VARCHAR({length})"
+    elif col_type is Integer:
+        pg_type = "INTEGER"
+    elif col_type is BigInteger:
+        pg_type = "BIGINT"
+    elif col_type is Float:
+        pg_type = "DOUBLE PRECISION"
+    elif col_type is Boolean:
+        pg_type = "BOOLEAN"
+    elif col_type is DateTime:
+        pg_type = "TIMESTAMP WITH TIME ZONE" if col.type.timezone else "TIMESTAMP"
+    elif col_type is UUID:
+        pg_type = "UUID"
+    elif col_type is JSONB:
+        pg_type = "JSONB"
+    elif col_type is ARRAY:
+        # Preserve the element type so ARRAY(Integer) → INTEGER[] not VARCHAR[].
+        item_type = col.type.item_type
+        item_pg = {
+            Text: "TEXT",
+            String: "TEXT",
+            Integer: "INTEGER",
+            BigInteger: "BIGINT",
+            Float: "DOUBLE PRECISION",
+            Boolean: "BOOLEAN",
+        }.get(type(item_type), "TEXT")
+        pg_type = f"{item_pg}[]"
+    else:
+        pg_type = "TEXT"
+
+    ddl = pg_type
+
+    # ------------------------------------------------------------------
+    # Step 2: Resolve the DEFAULT clause.
+    #
+    # server_default.arg can be:
+    #   a) A TextClause  (from text("gen_random_uuid()") or text("now()"))
+    #      → extract .text to get the raw SQL string
+    #   b) A FunctionElement (from func.now())
+    #      → str() produces "now()" — valid raw SQL
+    #   c) A plain str  (from server_default="low" or server_default="0")
+    #      → needs quoting logic applied
+    # ------------------------------------------------------------------
     if col.server_default is not None:
-        default_text = col.server_default.arg
-        if hasattr(default_text, "text"):
-            default_text = default_text.text
-        ddl += f" DEFAULT {default_text}"
+        raw = col.server_default.arg
+
+        # TextClause: extract the embedded SQL string.
+        if hasattr(raw, "text"):
+            raw_str = raw.text.strip()
+        else:
+            raw_str = str(raw).strip()
+
+        default_clause = _resolve_default_clause(raw_str, col_type, col.type, col_type is JSONB, col_type is ARRAY)
+        ddl += f" DEFAULT {default_clause}"
+
+    # ------------------------------------------------------------------
+    # Step 3: Append nullability.
+    # ------------------------------------------------------------------
+    if not col.nullable:
+        ddl += " NOT NULL"
 
     return ddl
+
+
+def _resolve_default_clause(
+    raw: str,
+    col_type: type,
+    sqla_type,
+    is_jsonb: bool,
+    is_array: bool,
+) -> str:
+    """Given a raw default string from SQLAlchemy, return a safe PostgreSQL DEFAULT expression.
+
+    Rules applied in order:
+    1. Already fully-formed PostgreSQL expressions (contain '::') → pass through unchanged.
+    2. Already single-quoted literals → pass through unchanged.
+    3. Known SQL keywords / functions (TRUE, FALSE, NOW(), etc.) → pass through unchanged.
+    4. Looks numeric (int or float literal) → pass through unchanged.
+    5. JSONB column with bare JSON literal → quote and cast: 'value'::jsonb
+    6. ARRAY column with bare array literal → quote and cast: 'value'::text[]
+    7. String / Text column → quote as string literal: 'value'
+    8. Anything else → pass through unchanged (let PostgreSQL validate it).
+    """
+    from sqlalchemy import String, Text
+    from sqlalchemy.dialects.postgresql import ARRAY, JSONB
+
+    # Rule 1: already a cast expression.
+    if "::" in raw:
+        return raw
+
+    # Rule 2: already quoted.
+    if raw.startswith("'") and raw.endswith("'"):
+        return raw
+
+    # Rule 3: SQL keyword / function — never quote these.
+    if raw.upper() in _PG_BARE_KEYWORDS:
+        return raw
+
+    # Rule 4: numeric literal — never quote.
+    try:
+        float(raw)  # catches "0", "0.0", "-1", "3.14"
+        return raw
+    except ValueError:
+        pass
+
+    # Rule 5: JSONB column.
+    if is_jsonb:
+        # e.g. "[]" → '[]'::jsonb,  "{}" → '{}'::jsonb
+        return f"'{raw}'::jsonb"
+
+    # Rule 6: ARRAY column.
+    if is_array:
+        # e.g. "{}" → '{}'::text[]
+        item_pg = "text"  # safe fallback; array element type already in the column DDL
+        return f"'{raw}'::{item_pg}[]"
+
+    # Rule 7: string-like column types need quoting.
+    if isinstance(sqla_type, (String, Text)):
+        # Escape any embedded single quotes.
+        escaped = raw.replace("'", "''")
+        return f"'{escaped}'"
+
+    # Rule 8: everything else — pass through and let PostgreSQL decide.
+    return raw
 
 
 async def validate_schema() -> dict[str, list[str]]:
@@ -172,21 +301,44 @@ async def validate_schema() -> dict[str, list[str]]:
                     table_name, len(missing), ", ".join(sorted(missing)),
                 )
 
-    # Auto-fix missing columns
+    # Auto-fix missing columns.
+    # CRITICAL: each ALTER TABLE runs in its own independent transaction.
+    # PostgreSQL poisons an entire transaction on any DDL error, so a single
+    # shared engine.begin() block would roll back all previously-successful
+    # columns the moment one fails. One transaction per column avoids this.
     if all_missing:
         logger.info("Auto-fixing %d table(s) with missing columns...", len(all_missing))
-        async with engine.begin() as conn:
-            for table_name, missing_cols in all_missing.items():
-                sa_table = Base.metadata.tables[table_name]
-                for col_name in missing_cols:
-                    sa_col = sa_table.columns[col_name]
+        for table_name, missing_cols in all_missing.items():
+            sa_table = Base.metadata.tables[table_name]
+            for col_name in missing_cols:
+                sa_col = sa_table.columns[col_name]
+                try:
                     ddl = _sqla_col_to_ddl(sa_col)
-                    sql = f"ALTER TABLE {table_name} ADD COLUMN IF NOT EXISTS {col_name} {ddl}"
-                    try:
+                except Exception as e:
+                    logger.error(
+                        "  FAILED to build DDL for %s.%s — skipping: %s",
+                        table_name, col_name, e,
+                    )
+                    continue
+
+                sql = (
+                    f"ALTER TABLE {table_name} "
+                    f"ADD COLUMN IF NOT EXISTS {col_name} {ddl}"
+                )
+                # Each column gets its own transaction so that a failure on
+                # column N does not roll back successfully-added columns 1..N-1.
+                try:
+                    async with engine.begin() as conn:
                         await conn.execute(text(sql))
-                        logger.info("  ADDED column %s.%s (%s)", table_name, col_name, ddl)
-                    except Exception as e:
-                        logger.error("  FAILED to add %s.%s: %s", table_name, col_name, e)
+                    logger.info(
+                        "  ✓ ADDED column %s.%s  DDL: %s",
+                        table_name, col_name, ddl,
+                    )
+                except Exception as e:
+                    logger.error(
+                        "  ✗ FAILED to add %s.%s  DDL: %s  Error: %s",
+                        table_name, col_name, ddl, e,
+                    )
 
         # Re-verify
         async with engine.connect() as conn:

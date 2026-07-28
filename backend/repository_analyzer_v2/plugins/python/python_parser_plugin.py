@@ -74,6 +74,8 @@ from models.parser import ParserWarning as ModelParserWarning
 from models.tree_sitter_models import ParseTree
 from plugins.parser_plugin import ParserPlugin
 from plugins.python.ast_converter import PythonASTConverter
+from plugins.python.native_ast_converter import convert_python_native_ast
+from plugins.python.semantic_extractor import PythonSemanticExtractor
 from utils.exceptions import ErrorCode, ParserError as EngineParserError
 from utils.logger import get_logger
 
@@ -146,6 +148,7 @@ class PythonParserPlugin(ParserPlugin):
         self._init_lock: threading.Lock = threading.Lock()
         self._ts_python_version: str = _get_ts_python_version()
 
+        self._semantic_extractor: PythonSemanticExtractor = PythonSemanticExtractor()
         # Benchmarking accumulators (all protected by GIL for int/float)
         self._total_parses: int = 0
         self._total_parse_ms: float = 0.0
@@ -227,15 +230,10 @@ class PythonParserPlugin(ParserPlugin):
                 try:
                     self._engine.initialize([ParserLanguage.PYTHON])
                 except Exception as exc:
-                    raise RuntimeError(
-                        f"[PythonParserPlugin] Failed to initialize TreeSitterEngine: {exc}"
-                    ) from exc
-
-            if not self._engine.is_language_loaded(_GRAMMAR_KEY):
-                raise RuntimeError(
-                    "[PythonParserPlugin] Python grammar failed to load. "
-                    "Ensure 'tree-sitter-python' is installed."
-                )
+                    logger.warning(
+                        f"[PythonParserPlugin] TreeSitterEngine failed to initialize: {exc}. "
+                        "Falling back to native Python ast module."
+                    )
 
             self._max_ast_depth: int = max_ast_depth
             self._is_initialized = True
@@ -274,13 +272,13 @@ class PythonParserPlugin(ParserPlugin):
                 details={"initialized": False},
             )
 
-        grammar_ok = self._engine.is_language_loaded(_GRAMMAR_KEY)
-        status = HealthStatus.HEALTHY if grammar_ok else HealthStatus.DEGRADED
+        grammar_ok = self._engine.is_language_loaded(_GRAMMAR_KEY) if self._engine else False
+        status = HealthStatus.HEALTHY if self._is_initialized else HealthStatus.UNHEALTHY
         return ComponentHealth(
             name=f"ParserPlugin:{ParserLanguage.PYTHON.value}",
             status=status,
             message=(
-                f"PythonParserPlugin {'ready' if grammar_ok else 'grammar not loaded'}. "
+                f"PythonParserPlugin {'ready' if self._is_initialized else 'not initialized'}. "
                 f"Total parses: {self._total_parses}"
             ),
             details={
@@ -300,19 +298,15 @@ class PythonParserPlugin(ParserPlugin):
     # ------------------------------------------------------------------
 
     def validate(self, content: str) -> bool:
-        """
-        Quick syntax validity check for a Python source string.
-
-        Uses ``TreeSitterEngine.parse()`` and checks for parse errors.
-        Returns ``False`` if the parse tree contains any ERROR nodes,
-        ``True`` otherwise.
-        """
-        if not self._is_initialized or self._engine is None:
+        if not self._is_initialized:
             return False
         try:
             source = content.encode("utf-8", errors="replace")
-            tree = self._engine.parse(_GRAMMAR_KEY, source, "<validate>")
-            return not tree.has_errors
+            if self._engine and self._engine.is_language_loaded(_GRAMMAR_KEY):
+                tree = self._engine.parse(_GRAMMAR_KEY, source, "<validate>")
+                return not tree.has_errors
+            ast_root = convert_python_native_ast(content, "<validate>")
+            return ast_root is not None
         except Exception:
             return False
 
@@ -380,55 +374,42 @@ class PythonParserPlugin(ParserPlugin):
             )
 
         # ------------------------------------------------------------------
-        # 3. Parse with TreeSitterEngine
-        # ------------------------------------------------------------------
-        try:
-            parse_tree: ParseTree = self._engine.parse(
-                _GRAMMAR_KEY,
-                source_bytes,
-                job.file.path,
-            )
-        except EngineParserError as exc:
-            return self._error_result(
-                job=job,
-                status=ParserStatus.INTERNAL_ERROR,
-                message=f"TreeSitterEngine parse failure: {exc}",
-            )
-        except Exception as exc:
-            logger.exception(f"[PythonParserPlugin] Unexpected engine error for '{job.file.path}'")
-            return self._error_result(
-                job=job,
-                status=ParserStatus.INTERNAL_ERROR,
-                message=f"Unexpected parse error: {exc}",
-            )
-
-        # ------------------------------------------------------------------
-        # 4. AST conversion
+        # 3. Parse with TreeSitterEngine or fallback to Native Python AST
         # ------------------------------------------------------------------
         ast_root: Optional[ASTRoot] = None
         converter_errors: List[ModelParserError] = []
+        parse_tree: Optional[ParseTree] = None
         ast_node_count = 0
 
-        try:
-            converter = PythonASTConverter(max_depth=getattr(self, "_max_ast_depth", 200))
-            ast_root = converter.convert(parse_tree, source_bytes)
-            ast_node_count = converter.node_count
-        except Exception as exc:
-            logger.exception(f"[PythonParserPlugin] AST conversion error for '{job.file.path}'")
-            converter_errors.append(
-                ModelParserError(
-                    message=f"AST conversion failed: {exc}",
-                    line=1,
-                    severity="error",
+        source_str = source_bytes.decode(encoding, errors="replace")
+
+        if self._engine and self._engine.is_language_loaded(_GRAMMAR_KEY):
+            try:
+                parse_tree = self._engine.parse(
+                    _GRAMMAR_KEY,
+                    source_bytes,
+                    job.file.path,
                 )
-            )
+                converter = PythonASTConverter(max_depth=getattr(self, "_max_ast_depth", 200))
+                ast_root = converter.convert(parse_tree, source_bytes)
+                ast_node_count = converter.node_count
+            except Exception as exc:
+                logger.warning(f"[PythonParserPlugin] TreeSitter parse failed for '{job.file.path}': {exc}. Using native AST fallback.")
+                parse_tree = None
+
+        if ast_root is None:
+            ast_root = convert_python_native_ast(source_str, job.file.path)
+            ast_node_count = ast_root.total_nodes
 
         # ------------------------------------------------------------------
         # 5. Diagnostic collection from parse tree
         # ------------------------------------------------------------------
-        parse_errors, parse_warnings = self._collect_diagnostics(
-            parse_tree, source_bytes, opts
-        )
+        if parse_tree is not None:
+            parse_errors, parse_warnings = self._collect_diagnostics(
+                parse_tree, source_bytes, opts
+            )
+        else:
+            parse_errors, parse_warnings = [], []
         all_errors = parse_errors + converter_errors
         all_warnings: List[ModelParserWarning] = list(parse_warnings)
 
@@ -444,7 +425,7 @@ class PythonParserPlugin(ParserPlugin):
         # ------------------------------------------------------------------
         # 6. Determine status
         # ------------------------------------------------------------------
-        if parse_tree.has_errors and all_errors:
+        if parse_tree and parse_tree.has_errors and all_errors:
             status = ParserStatus.PARTIAL_SUCCESS if ast_root else ParserStatus.SYNTAX_ERROR
         elif converter_errors:
             status = ParserStatus.PARTIAL_SUCCESS if ast_root else ParserStatus.INTERNAL_ERROR
@@ -478,6 +459,54 @@ class PythonParserPlugin(ParserPlugin):
         )
 
         # ------------------------------------------------------------------
+        # 4.5 Extract raw symbols and raw imports
+        # ------------------------------------------------------------------
+        raw_symbols = []
+        raw_imports = []
+        if ast_root is not None:
+            try:
+                res = self._semantic_extractor.extract(ast_root)
+                mod = res.module
+                if mod:
+                    for fn in mod.functions:
+                        raw_symbols.append({
+                            "kind": "function",
+                            "name": fn.name,
+                            "file_path": job.file.path,
+                            "range": fn.range.model_dump() if fn.range else None,
+                            "docstring": fn.docstring,
+                            "signature": fn.name,
+                        })
+                    for cls in mod.classes:
+                        raw_symbols.append({
+                            "kind": "class",
+                            "name": cls.name,
+                            "file_path": job.file.path,
+                            "range": cls.range.model_dump() if cls.range else None,
+                            "docstring": cls.docstring,
+                            "signature": cls.name,
+                        })
+                        for m in cls.methods:
+                            raw_symbols.append({
+                                "kind": "method",
+                                "name": m.name,
+                                "file_path": job.file.path,
+                                "range": m.range.model_dump() if m.range else None,
+                                "docstring": m.docstring,
+                                "signature": f"{cls.name}.{m.name}",
+                            })
+                    for imp in mod.imports:
+                        raw_imports.append({
+                            "module": imp.module,
+                            "imported_names": imp.imported_names,
+                            "aliases": imp.aliases,
+                            "file_path": job.file.path,
+                            "range": imp.range.model_dump() if imp.range else None,
+                        })
+            except Exception as exc:
+                logger.warning(f"[PythonParserPlugin] Semantic extraction failed for '{job.file.path}': {exc}")
+
+        # ------------------------------------------------------------------
         # 8. Assemble ParserResult
         # ------------------------------------------------------------------
         result = ParserResult(
@@ -490,6 +519,8 @@ class PythonParserPlugin(ParserPlugin):
             statistics=statistics,
             metadata=metadata,
             ast_root=ast_root.model_dump() if ast_root else None,
+            raw_symbols=raw_symbols,
+            raw_imports=raw_imports,
         )
 
         # ------------------------------------------------------------------

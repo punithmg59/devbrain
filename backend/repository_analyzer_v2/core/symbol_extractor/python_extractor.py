@@ -44,6 +44,13 @@ class PythonSymbolExtractor(AbstractSymbolExtractor):
         if not ast_root:
             return []
 
+        if isinstance(ast_root, dict) and "root_node" in ast_root:
+            start_node = ast_root["root_node"]
+        elif hasattr(ast_root, "root_node"):
+            start_node = getattr(ast_root, "root_node")
+        else:
+            start_node = ast_root
+
         symbols: List[RawSymbol] = []
         file_path = parser_result.file_path
         file_id = parser_result.result_id
@@ -57,7 +64,15 @@ class PythonSymbolExtractor(AbstractSymbolExtractor):
                 return
 
             ndict = node.model_dump() if hasattr(node, "model_dump") else (node if isinstance(node, dict) else {})
-            ntype = str(ndict.get("type", "")).lower()
+            raw_type = ndict.get("type") or getattr(node, "type", "")
+            if hasattr(raw_type, "value"):
+                ntype = str(raw_type.value).lower()
+            else:
+                ntype = str(raw_type).lower()
+                if "." in ntype:
+                    ntype = ntype.split(".")[-1]
+                if ":" in ntype:
+                    ntype = ntype.split(":")[0].strip("<> ")
             name = ndict.get("name") or ""
             rdata = ndict.get("range", {}) or {}
 
@@ -178,5 +193,5 @@ class PythonSymbolExtractor(AbstractSymbolExtractor):
                     for ch in children:
                         walk(ch, parent_kind=parent_kind)
 
-        walk(ast_root)
+        walk(start_node)
         return symbols

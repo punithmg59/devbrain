@@ -367,6 +367,12 @@ class PythonSemanticExtractor:
                     else:
                         imported_names.append(item)
 
+                if node.metadata and node.metadata.custom:
+                    if "aliases" in node.metadata.custom and node.metadata.custom["aliases"]:
+                        aliases.update(node.metadata.custom["aliases"])
+                    if "imported_names" in node.metadata.custom and not imported_names:
+                        imported_names = list(node.metadata.custom["imported_names"])
+
                 return ExtractedImport(
                     module=module,
                     imported_names=imported_names,
@@ -396,6 +402,18 @@ class PythonSemanticExtractor:
                 imported_names.append(item)
                 if module is None:
                     module = item
+
+        # Check custom metadata from native AST or TreeSitter converter
+        if node.metadata and node.metadata.custom:
+            custom_names = node.metadata.custom.get("imported_names")
+            custom_aliases = node.metadata.custom.get("aliases")
+            custom_module = node.metadata.custom.get("module")
+            if custom_names and not imported_names:
+                imported_names = list(custom_names)
+            if custom_aliases:
+                aliases.update(custom_aliases)
+            if custom_module and not module:
+                module = custom_module
 
         return ExtractedImport(
             module=module,

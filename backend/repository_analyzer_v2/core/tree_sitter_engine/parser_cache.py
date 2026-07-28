@@ -29,9 +29,17 @@ from __future__ import annotations
 import threading
 import time
 from contextlib import contextmanager
-from typing import Dict, Generator, Optional
+from typing import Any, Dict, Generator, Optional
 
-from tree_sitter import Language, Parser
+try:
+    from tree_sitter import Language, Parser
+except ImportError:
+    class Language:  # type: ignore
+        pass
+    class Parser:  # type: ignore
+        def __init__(self, *args, **kwargs):
+            raise ImportError("tree_sitter C-binding unavailable")
+
 
 from utils.logger import get_logger
 

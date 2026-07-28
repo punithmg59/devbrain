@@ -33,9 +33,14 @@ from __future__ import annotations
 import os
 import threading
 import time
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
-from tree_sitter import Node as TSNode, Tree as TSTree
+try:
+    from tree_sitter import Node as TSNode, Tree as TSTree
+except ImportError:
+    class TSNode: pass  # type: ignore
+    class TSTree: pass  # type: ignore
+
 
 from core.tree_sitter_engine.grammar_loader import GrammarLoader, LANGUAGE_KEYS
 from core.tree_sitter_engine.language_cache import LanguageCache

@@ -142,48 +142,8 @@ async def run_pipeline(job_id: UUID) -> None:
             # ── STAGE: scanning ────────────────────────────────────────
             await reporter.set_stage("scanning")
 
-            # TODO: The existing analysis function handles cloning internally.
-            # On Day 5, we will separate cloning from analysis to get the clone_path.
-            # For now, we skip scanning since we don't have access to the clone path.
-            # The scanner will be fully integrated when we refactor the analysis flow.
-            clone_path = None  # Will be populated on Day 5
-
-            if clone_path:
-                # Run scanner in a thread (it uses os.walk which is I/O bound)
-                scan_result = await asyncio.to_thread(scan, clone_path)
-
-                await reporter.set_files_total(scan_result.analyzable_total)
-
-                logger.info(
-                    "Scan complete: %d total files, %d analyzable, fast_mode=%s",
-                    scan_result.files_total, scan_result.analyzable_total, scan_result.fast_mode,
-                )
-
-                if scan_result.fast_mode and scan_result.skipped_dirs:
-                    logger.info("Fast mode skipped top-level dirs: %s", scan_result.skipped_dirs)
-
-                # ── INCREMENTAL PLAN ─────────────────────────────────────
-                # Get current HEAD commit SHA if available
-                head_sha = getattr(repo, "last_commit_sha", None)
-
-                plan = await build_incremental_plan(db, str(repo.id), scan_result, head_sha)
-
-                logger.info(
-                    "Incremental plan: is_incremental=%s, to_parse=%d, unchanged=%d, deleted=%d",
-                    plan.is_incremental, plan.changed_count,
-                    plan.skipped_count, len(plan.deleted_paths),
-                )
-
-                job.incremental = plan.is_incremental
-
-                # If nothing changed, finish immediately
-                if plan.is_incremental and plan.changed_count == 0:
-                    await reporter.finish("completed", time.monotonic() - started_at)
-                    return
-            else:
-                # No clone path available - skip scanner for now
-                logger.info("Skipping scanner (clone path not available - will integrate on Day 5)")
-                job.incremental = False
+            logger.info("Executing Repository Analyzer V2 pipeline for repo %s", repo.full_name)
+            job.incremental = False
 
             # ── STAGE: parsing ────────────────────────────────────────
             await reporter.set_stage("parsing")
@@ -212,7 +172,7 @@ async def run_pipeline(job_id: UUID) -> None:
 
             file_count = (await db.execute(
                 select(func.count()).where(RepoFile.repo_id == repo.id)
-            )).scalar() if hasattr(repo, 'files') else (job.files_total or 0)
+            )).scalar() or 0
 
             # Get function count from repo if available
             function_count = repo.total_functions or 0

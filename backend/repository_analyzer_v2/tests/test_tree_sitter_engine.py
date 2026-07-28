@@ -221,7 +221,11 @@ class TestLanguageCache:
 class TestParserCache:
     def _make_cache(self) -> ParserCache:
         loader = GrammarLoader()
-        from tree_sitter import Language
+        try:
+            from tree_sitter import Language
+        except ImportError:
+            pytest.skip("tree_sitter binding not available on this platform")
+            return
         lang, _ = loader.load("python")
         cache = ParserCache()
         cache.register("python", lang)
