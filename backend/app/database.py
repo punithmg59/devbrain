@@ -31,7 +31,8 @@ def _build_async_connect_args(database_url: str, environment: str) -> dict:
         ctx.verify_mode = ssl.CERT_NONE
         ssl_arg = ctx
     else:
-        ssl_arg = True
+        ctx = ssl.create_default_context()
+        ssl_arg = ctx
     
     # CRITICAL: statement_cache_size=0 is required for PgBouncer transaction pooling
     return {"ssl": ssl_arg, "statement_cache_size": 0}
