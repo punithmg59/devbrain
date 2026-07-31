@@ -64,16 +64,12 @@ async def init_redis() -> None:
         _redis_client = client
         logger.info("Redis connected")
     except Exception as e:
-        logger.error("Redis connection failed: %s", e)
-        if settings.environment == "development":
-            _redis_client = InMemoryRedis()
-            logger.warning(
-                "Using in-memory store for OAuth state (development only). "
-                "Install Redis for production: docker run -d -p 6379:6379 redis:7-alpine"
-            )
-        else:
-            _redis_client = None
-            raise
+        logger.warning(
+            "Redis unavailable (%s) — auth will use in-process MemoryOAuthStateStorage. "
+            "Deploy Redis for multi-worker production environments.",
+            e,
+        )
+        _redis_client = None
 
 
 async def close_redis() -> None:

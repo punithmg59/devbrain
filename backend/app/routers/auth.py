@@ -15,7 +15,7 @@ from app.models import Session, User
 from app.schemas.auth import UserResponse
 from app.utils.auth import create_session_token, get_current_user, hash_token
 from app.utils.github import clear_github_token, save_github_token
-from app.utils.redis_client import get_redis, is_redis_available
+from app.utils.oauth_state_storage import OAuthStateStorage, get_oauth_state_storage
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["auth"])
@@ -30,18 +30,11 @@ SESSION_MAX_AGE = 2592000  # 30 days
 
 
 @router.get("/api/auth/github")
-async def github_login() -> RedirectResponse:
-    if not is_redis_available():
-        from fastapi import HTTPException
-
-        raise HTTPException(
-            status_code=503,
-            detail="Auth storage unavailable. Start Redis or run in development mode.",
-        )
-
+async def github_login(
+    storage: OAuthStateStorage = Depends(get_oauth_state_storage),
+) -> RedirectResponse:
     state = secrets.token_hex(16)
-    redis = get_redis()
-    await redis.setex(f"oauth_state:{state}", 600, "1")
+    await storage.save_state(state)
 
     redirect_uri = settings.oauth_redirect_uri
     params = {
@@ -60,6 +53,7 @@ async def github_callback(
     code: str | None = None,
     state: str | None = None,
     db: AsyncSession = Depends(get_db),
+    storage: OAuthStateStorage = Depends(get_oauth_state_storage),
 ) -> RedirectResponse:
     if not code or not state:
         return RedirectResponse(
@@ -67,15 +61,13 @@ async def github_callback(
             status_code=302,
         )
 
-    redis = get_redis()
-    state_key = f"oauth_state:{state}"
-    stored_state = await redis.get(state_key)
+    stored_state = await storage.get_state(state)
     if not stored_state:
         return RedirectResponse(
             url=f"{settings.frontend_url}/auth/error?msg=invalid_state",
             status_code=302,
         )
-    await redis.delete(state_key)
+    await storage.delete_state(state)
 
     async with httpx.AsyncClient() as client:
         token_response = await client.post(

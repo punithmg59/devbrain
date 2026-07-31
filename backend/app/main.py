@@ -27,6 +27,7 @@ from app.routers import (
 )
 from app.services.pipeline.orchestrator import worker_loop as _worker_loop
 from app.utils.errors import DevBrainException
+from app.utils.oauth_state_storage import OAuthStateStorageFactory, shutdown_oauth_state_storage
 from app.utils.redis_client import close_redis, init_redis
 
 logging.basicConfig(level=logging.INFO)
@@ -147,6 +148,9 @@ async def startup_event() -> None:
     _worker_task = asyncio.create_task(_worker_loop(_stop_event))
     logger.info("DevBrain worker loop started")
 
+    # 6. Pre-initialise OAuth state storage singleton (logs which backend was selected)
+    OAuthStateStorageFactory.create()
+
     logger.info("DevBrain API started")
 
 
@@ -164,6 +168,7 @@ async def shutdown_event() -> None:
             _worker_task.cancel()
     
     await close_redis()
+    await shutdown_oauth_state_storage()
     logger.info("DevBrain API shutting down")
 
 
