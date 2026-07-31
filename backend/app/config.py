@@ -8,10 +8,10 @@ class Settings(BaseSettings):
     direct_url: str
 
     # App
-    app_url: str = "http://127.0.0.1:8000"
-    frontend_url: str = "http://localhost:5173"
+    app_url: str = "https://devbrain-backend-production.up.railway.app"
+    frontend_url: str = "https://devbrain-gilt.vercel.app"
     secret_key: str
-    environment: str = "development"
+    environment: str = "Production"
 
     # GitHub
     github_client_id: str
