@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import sys
 from pathlib import Path
 from typing import Any, Dict, List, Set, Tuple
@@ -38,7 +39,114 @@ from models.repository import DiscoveryConfig, RepositoryFile
 from pipeline.discovery import RepositoryDiscovery
 from plugins.python.python_parser_plugin import PythonParserPlugin
 
+# Import the battle-tested code_parser for JS/TS regex extraction
+from app.services.code_parser import parse_javascript
+
 logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Lightweight regex parsers for languages without a tree-sitter plugin yet
+# ---------------------------------------------------------------------------
+
+_JAVA_METHOD = re.compile(
+    r"(?:public|private|protected|static|final|\s)+"
+    r"[\w<>\[\]]+\s+([\w]+)\s*\([^)]*\)\s*(?:throws[^{]+)?\{",
+    re.MULTILINE,
+)
+_JAVA_CLASS = re.compile(
+    r"(?:public|private|protected|abstract|final|\s)*"
+    r"(?:class|interface|enum)\s+([\w]+)",
+    re.MULTILINE,
+)
+_GO_FUNC = re.compile(
+    r"^func\s+(?:\([^)]+\)\s+)?([\w]+)\s*\(",
+    re.MULTILINE,
+)
+_GO_TYPE = re.compile(r"^type\s+([\w]+)\s+", re.MULTILINE)
+_CS_METHOD = re.compile(
+    r"(?:public|private|protected|internal|static|virtual|override|async|\s)+"
+    r"[\w<>\[\]?]+\s+([\w]+)\s*\([^)]*\)\s*(?:where[^{]+)?\{",
+    re.MULTILINE,
+)
+_CS_CLASS = re.compile(
+    r"(?:public|private|protected|internal|abstract|sealed|static|\s)*"
+    r"(?:class|interface|struct|enum|record)\s+([\w]+)",
+    re.MULTILINE,
+)
+
+
+def _extract_java_symbols(content: str, file_path: str) -> List[Dict]:
+    """Extract Java/Kotlin methods and classes via regex."""
+    symbols: List[Dict] = []
+    for m in _JAVA_CLASS.finditer(content):
+        name = m.group(1)
+        line = content[: m.start()].count("\n") + 1
+        symbols.append({"kind": "class", "name": name, "file_path": file_path,
+                        "range": {"start": {"line": line}, "end": {"line": line}}})
+    for m in _JAVA_METHOD.finditer(content):
+        name = m.group(1)
+        if name in ("if", "for", "while", "switch", "catch"):
+            continue
+        line = content[: m.start()].count("\n") + 1
+        symbols.append({"kind": "function", "name": name, "file_path": file_path,
+                        "range": {"start": {"line": line}, "end": {"line": line}}})
+    return symbols
+
+
+def _extract_go_symbols(content: str, file_path: str) -> List[Dict]:
+    """Extract Go functions and types via regex."""
+    symbols: List[Dict] = []
+    for m in _GO_TYPE.finditer(content):
+        name = m.group(1)
+        line = content[: m.start()].count("\n") + 1
+        symbols.append({"kind": "class", "name": name, "file_path": file_path,
+                        "range": {"start": {"line": line}, "end": {"line": line}}})
+    for m in _GO_FUNC.finditer(content):
+        name = m.group(1)
+        if name in ("init", "main"):
+            kind = "function"
+        else:
+            kind = "method" if m.group(0).startswith("func (") else "function"
+        line = content[: m.start()].count("\n") + 1
+        symbols.append({"kind": kind, "name": name, "file_path": file_path,
+                        "range": {"start": {"line": line}, "end": {"line": line}}})
+    return symbols
+
+
+def _extract_csharp_symbols(content: str, file_path: str) -> List[Dict]:
+    """Extract C# methods and classes via regex."""
+    symbols: List[Dict] = []
+    for m in _CS_CLASS.finditer(content):
+        name = m.group(1)
+        line = content[: m.start()].count("\n") + 1
+        symbols.append({"kind": "class", "name": name, "file_path": file_path,
+                        "range": {"start": {"line": line}, "end": {"line": line}}})
+    for m in _CS_METHOD.finditer(content):
+        name = m.group(1)
+        if name in ("if", "for", "while", "switch", "catch", "return"):
+            continue
+        line = content[: m.start()].count("\n") + 1
+        symbols.append({"kind": "function", "name": name, "file_path": file_path,
+                        "range": {"start": {"line": line}, "end": {"line": line}}})
+    return symbols
+
+
+def _js_nodes_to_raw_symbols(nodes: List[Dict], file_path: str) -> List[Dict]:
+    """Convert code_parser node dicts to the raw_symbols format expected by step 3."""
+    symbols: List[Dict] = []
+    for n in nodes:
+        symbols.append({
+            "kind": n.get("node_type", "function"),
+            "name": n.get("name", ""),
+            "file_path": file_path,
+            "signature": n.get("name", ""),
+            "range": {
+                "start": {"line": n.get("start_line", 1)},
+                "end": {"line": n.get("end_line", n.get("start_line", 1))},
+            },
+        })
+    return symbols
 
 
 def _map_language(lang_str: str | None) -> ParserLanguage:
@@ -196,7 +304,25 @@ def run_v2_analysis_collection(clone_path: str, repository_id: str) -> AnalysisP
                 )
                 parser_results.append(res)
         else:
-            # Construct standard, schema-valid ParserResult for other languages
+            # For non-Python languages: read file content and run regex-based
+            # symbol extraction so these files contribute real nodes.
+            raw_symbols: List[Dict] = []
+            try:
+                abs_p = Path(f.absolute_path)
+                if abs_p.exists():
+                    content = abs_p.read_bytes().decode("utf-8", errors="replace")
+                    if lang_enum in (ParserLanguage.JAVASCRIPT, ParserLanguage.TYPESCRIPT):
+                        js_nodes = parse_javascript(content, rel_path)
+                        raw_symbols = _js_nodes_to_raw_symbols(js_nodes, rel_path)
+                    elif lang_enum == ParserLanguage.JAVA:
+                        raw_symbols = _extract_java_symbols(content, rel_path)
+                    elif lang_enum == ParserLanguage.GO:
+                        raw_symbols = _extract_go_symbols(content, rel_path)
+                    elif lang_enum == ParserLanguage.CSHARP:
+                        raw_symbols = _extract_csharp_symbols(content, rel_path)
+            except Exception as exc:
+                logger.debug(f"[V2Adapter] Non-Python parse failed for '{rel_path}': {exc}")
+
             res = ParserResult(
                 job_id=v2_job.job_id,
                 file_path=rel_path,
@@ -212,6 +338,9 @@ def run_v2_analysis_collection(clone_path: str, repository_id: str) -> AnalysisP
                     bytes_parsed=f.size_bytes or 0,
                 ),
             )
+            # Attach extracted symbols so step 3 can build nodes from them
+            if raw_symbols:
+                res.raw_symbols = raw_symbols
             parser_results.append(res)
 
     payload.source_files_analyzed = len(parser_results)

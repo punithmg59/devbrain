@@ -1,4 +1,5 @@
 import logging
+import uuid
 from sqlalchemy import select, func, text, and_, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import async_session_factory
@@ -46,7 +47,44 @@ async def compute_scores(repo_id: str) -> dict:
     """
     logger.info("Computing graph scores for repo %s", repo_id)
 
+    # FIX: asyncpg binary protocol sends Python str as PostgreSQL TEXT (OID 25).
+    # nodes.repo_id / edges.repo_id are UUID columns (OID 2950). Passing str
+    # causes a silent type mismatch — UPDATE/SELECT WHERE clauses match 0 rows.
+    # Converting to uuid.UUID ensures asyncpg sends OID 2950, matching the column.
+    repo_uuid = uuid.UUID(repo_id) if not isinstance(repo_id, uuid.UUID) else repo_id
+    logger.info(
+        "GraphScorer repo_id=%s type=%s",
+        repo_uuid,
+        type(repo_uuid),
+    )
+
     async with async_session_factory() as db:
+        param_obj = {"repo_id": str(repo_uuid)}
+
+        # 1. Initial nodes check
+        q_init_nodes = "SELECT COUNT(*) FROM nodes WHERE repo_id = CAST(:repo_id AS uuid)"
+        res_init_nodes = (await db.execute(text(q_init_nodes), param_obj)).scalar() or 0
+        logger.info(
+            "[INSTRUMENTATION] Initial Nodes Check:\n"
+            "  SQL: %s\n"
+            "  Bound Params: %s (Type: %s)\n"
+            "  Affected Rows: N/A\n"
+            "  Returned Count: %d",
+            q_init_nodes, param_obj, type(param_obj["repo_id"]), res_init_nodes
+        )
+
+        # 2. Initial edges check
+        q_init_edges = "SELECT COUNT(*) FROM edges WHERE repo_id = CAST(:repo_id AS uuid)"
+        res_init_edges = (await db.execute(text(q_init_edges), param_obj)).scalar() or 0
+        logger.info(
+            "[INSTRUMENTATION] Initial Edges Check:\n"
+            "  SQL: %s\n"
+            "  Bound Params: %s (Type: %s)\n"
+            "  Affected Rows: N/A\n"
+            "  Returned Count: %d",
+            q_init_edges, param_obj, type(param_obj["repo_id"]), res_init_edges
+        )
+
         # Step 1+2: fan_in and fan_out using SQL
         fan_query = """
         UPDATE nodes n
@@ -63,7 +101,7 @@ async def compute_scores(repo_id: str) -> dict:
                 from_node_id,
                 COUNT(*) as count
             FROM edges
-            WHERE repo_id = :repo_id
+            WHERE repo_id = CAST(:repo_id AS uuid)
             GROUP BY from_node_id
         ) outgoing
         FULL OUTER JOIN (
@@ -71,23 +109,35 @@ async def compute_scores(repo_id: str) -> dict:
                 to_node_id,
                 COUNT(*) as count
             FROM edges
-            WHERE repo_id = :repo_id
+            WHERE repo_id = CAST(:repo_id AS uuid)
             GROUP BY to_node_id
         ) incoming ON outgoing.from_node_id = incoming.to_node_id
         WHERE n.id = COALESCE(outgoing.from_node_id, incoming.to_node_id)
-        AND n.repo_id = :repo_id
+        AND n.repo_id = CAST(:repo_id AS uuid)
         """
-        await db.execute(text(fan_query), {"repo_id": repo_id})
-        
-        # Get node count
-        node_count_result = await db.execute(
-            select(func.count()).select_from(Node).where(Node.repo_id == repo_id)
+        fan_res = await db.execute(text(fan_query), param_obj)
+        logger.info(
+            "[INSTRUMENTATION] fan_in/fan_out UPDATE:\n"
+            "  SQL: %s\n"
+            "  Bound Params: %s (Type: %s)\n"
+            "  Affected Rows (rowcount): %s\n"
+            "  Returned Rows: N/A",
+            fan_query.strip(), param_obj, type(param_obj["repo_id"]), fan_res.rowcount
         )
-        node_count = node_count_result.scalar() or 0
-        logger.info("Scored fan_in/fan_out for %d nodes", node_count)
+        
+        # Post fan_in update check
+        q_fan_check = "SELECT COUNT(*) FROM nodes WHERE fan_in IS NOT NULL AND repo_id = CAST(:repo_id AS uuid)"
+        res_fan_check = (await db.execute(text(q_fan_check), param_obj)).scalar() or 0
+        logger.info(
+            "[INSTRUMENTATION] Post-fan UPDATE Node Count:\n"
+            "  SQL: %s\n"
+            "  Bound Params: %s (Type: %s)\n"
+            "  Affected Rows: N/A\n"
+            "  Returned Count: %d",
+            q_fan_check, param_obj, type(param_obj["repo_id"]), res_fan_check
+        )
 
         # Step 3: blast_radius via recursive CTE
-        # For each node, count how many nodes reach it within 8 hops
         blast_query = """
         WITH RECURSIVE blast_radius AS (
             -- Base case: nodes that directly call the target
@@ -96,7 +146,7 @@ async def compute_scores(repo_id: str) -> dict:
                 e.from_node_id as affected_id,
                 1 as depth
             FROM edges e
-            WHERE e.repo_id = :repo_id
+            WHERE e.repo_id = CAST(:repo_id AS uuid)
             
             UNION ALL
             
@@ -107,7 +157,7 @@ async def compute_scores(repo_id: str) -> dict:
                 br.depth + 1 as depth
             FROM blast_radius br
             JOIN edges e ON e.to_node_id = br.affected_id
-            WHERE e.repo_id = :repo_id
+            WHERE e.repo_id = CAST(:repo_id AS uuid)
             AND br.depth < 8
             AND e.from_node_id != br.target_id
         )
@@ -126,14 +176,19 @@ async def compute_scores(repo_id: str) -> dict:
             GROUP BY target_id
         ) br
         WHERE n.id = br.target_id
-        AND n.repo_id = :repo_id
+        AND n.repo_id = CAST(:repo_id AS uuid)
         """
         try:
-            await db.execute(text(blast_query), {"repo_id": repo_id})
-            logger.info("Scored blast_radius for nodes")
+            blast_res = await db.execute(text(blast_query), param_obj)
+            logger.info(
+                "[INSTRUMENTATION] blast_radius UPDATE:\n"
+                "  SQL: %s\n"
+                "  Bound Params: %s (Type: %s)\n"
+                "  Affected Rows (rowcount): %s\n"
+                "  Returned Rows: N/A",
+                blast_query.strip(), param_obj, type(param_obj["repo_id"]), blast_res.rowcount
+            )
         except Exception as exc:
-            # Blast radius query can time out on very large graphs
-            # Fall back to a simpler depth-1 approximation
             logger.warning("Full blast radius timed out, using depth-1 fallback: %s", exc)
             fallback = """
             UPDATE nodes n
@@ -150,13 +205,21 @@ async def compute_scores(repo_id: str) -> dict:
                     to_node_id,
                     COUNT(*) as count
                 FROM edges
-                WHERE repo_id = :repo_id
+                WHERE repo_id = CAST(:repo_id AS uuid)
                 GROUP BY to_node_id
             ) incoming
             WHERE n.id = incoming.to_node_id
-            AND n.repo_id = :repo_id
+            AND n.repo_id = CAST(:repo_id AS uuid)
             """
-            await db.execute(text(fallback), {"repo_id": repo_id})
+            fallback_res = await db.execute(text(fallback), param_obj)
+            logger.info(
+                "[INSTRUMENTATION] blast_radius Fallback UPDATE:\n"
+                "  SQL: %s\n"
+                "  Bound Params: %s (Type: %s)\n"
+                "  Affected Rows (rowcount): %s\n"
+                "  Returned Rows: N/A",
+                fallback.strip(), param_obj, type(param_obj["repo_id"]), fallback_res.rowcount
+            )
 
         await db.commit()
 
@@ -171,9 +234,9 @@ async def compute_scores(repo_id: str) -> dict:
             MAX(blast_radius) as max_blast,
             MAX(fan_in) as max_fan_in
         FROM nodes
-        WHERE repo_id = :repo_id
+        WHERE repo_id = CAST(:repo_id AS uuid)
         """
-        result = await db.execute(text(summary_query), {"repo_id": repo_id})
+        result = await db.execute(text(summary_query), param_obj)
         summary = result.first()
         result_dict = {
             "total": summary.total if summary else 0,
@@ -184,6 +247,15 @@ async def compute_scores(repo_id: str) -> dict:
             "max_blast": summary.max_blast if summary else 0,
             "max_fan_in": summary.max_fan_in if summary else 0,
         }
+
+        logger.info(
+            "[INSTRUMENTATION] Summary Query:\n"
+            "  SQL: %s\n"
+            "  Bound Params: %s (Type: %s)\n"
+            "  Affected Rows: N/A\n"
+            "  Returned Result: %s",
+            summary_query.strip(), param_obj, type(param_obj["repo_id"]), result_dict
+        )
 
         logger.info("Graph scoring complete for repo %s: %s", repo_id, result_dict)
         return result_dict
@@ -197,6 +269,9 @@ async def get_top_nodes_by_blast(
     Return the top N nodes by blast_radius for a repo using PostgreSQL.
     Used to pre-warm the Impact page cache after analysis.
     """
+    # FIX: same UUID/TEXT type mismatch fix applied here as in compute_scores().
+    repo_uuid = uuid.UUID(repo_id) if not isinstance(repo_id, uuid.UUID) else repo_id
+
     async with async_session_factory() as db:
         query = """
         SELECT 
@@ -209,12 +284,12 @@ async def get_top_nodes_by_blast(
             fan_in,
             fan_out
         FROM nodes
-        WHERE repo_id = :repo_id
+        WHERE repo_id = :repo_id::uuid
         AND blast_radius > 0
         ORDER BY blast_radius DESC
         LIMIT :limit
         """
-        result = await db.execute(text(query), {"repo_id": repo_id, "limit": limit})
+        result = await db.execute(text(query), {"repo_id": str(repo_uuid), "limit": limit})
         rows = result.fetchall()
         
         return [

@@ -40,45 +40,118 @@ _SEM = asyncio.Semaphore(_CONCURRENCY)
 # and eligible for reclaim by any worker.
 HEARTBEAT_STALE_SECONDS = 90
 
+# How often (seconds) the heartbeat keepalive task refreshes heartbeat_at.
+_HEARTBEAT_INTERVAL = 30
+
+# ── In-process job tracking ──────────────────────────────────────────────────
+# Prevents the same process from reclaiming a job it is already running.
+# This is the primary defense against the duplicate-execution bug: the claim
+# query can see a stale heartbeat for a job that is still actively running
+# in this process (because run_repo_analysis is synchronous and does not yield
+# to the heartbeat task often enough). By tracking running jobs in-memory,
+# _claim_next_job() will never return a job that is already in-flight.
+_running_jobs: set[UUID] = set()
+
 
 # ── Job claiming ─────────────────────────────────────────────────────────────
 
-async def _claim_next_job() -> UUID | None:
-    """
-    Atomically claim one queued job (or reclaim a stale in-progress job)
-    using SELECT ... FOR UPDATE SKIP LOCKED.
+async def _claim_next_job() -> tuple[UUID | None, str | None]:
+    """Atomically claim the next eligible job from the queue.
 
-    Returns the job UUID if one was claimed, None if the queue is empty.
+    A job is eligible if:
+    - status = 'queued', OR
+    - status is non-terminal AND heartbeat is stale (dead worker recovery)
 
-    SKIP LOCKED means multiple worker processes can call this simultaneously
-    without deadlocking — each gets a different job.
+    Jobs already running in this process (_running_jobs) are excluded.
     """
     async with async_session_factory() as db:
+        # Build exclusion list from in-process running jobs.
+        # PostgreSQL requires a non-empty IN list, so use a nil UUID sentinel.
+        exclude_ids = list(_running_jobs) if _running_jobs else [
+            UUID("00000000-0000-0000-0000-000000000000")
+        ]
+        exclude_strs = [str(uid) for uid in exclude_ids]
+
+        from sqlalchemy import bindparam
+        candidate = (await db.execute(
+            text("""
+                SELECT id, status, heartbeat_at, created_at, worker_id
+                FROM analysis_jobs
+                WHERE id NOT IN :exclude_ids
+                AND (
+                    status = 'queued'
+                    OR (
+                        status NOT IN ('completed', 'completed_with_warnings', 'failed')
+                        AND (
+                            heartbeat_at IS NULL
+                            OR heartbeat_at < now() - interval '90 seconds'
+                        )
+                    )
+                )
+                ORDER BY created_at ASC
+                LIMIT 1
+                FOR UPDATE SKIP LOCKED
+            """).bindparams(bindparam("exclude_ids", expanding=True)),
+            {"exclude_ids": exclude_strs},
+        )).first()
+
+        if not candidate:
+            return None, None
+
+        cand_id = candidate[0]
+        cand_status = candidate[1]
+
+        match_reason = (
+            "status='queued'" if cand_status == "queued" else "stale_heartbeat"
+        )
+
+        logger.info(
+            "Claiming job %s (reason: %s, prior_status: %s)",
+            cand_id, match_reason, cand_status,
+        )
+
         result = await db.execute(text("""
             UPDATE analysis_jobs
             SET    status       = 'cloning',
                    worker_id   = :worker_id,
                    heartbeat_at = now(),
                    started_at  = COALESCE(started_at, now())
-            WHERE  id = (
-                SELECT id FROM analysis_jobs
-                WHERE  status = 'queued'
-                OR (
-                    status NOT IN ('completed', 'completed_with_warnings', 'failed')
-                    AND (
-                        heartbeat_at IS NULL
-                        OR heartbeat_at < now() - interval '90 seconds'
-                    )
-                )
-                ORDER BY created_at ASC
-                LIMIT 1
-                FOR UPDATE SKIP LOCKED
-            )
+            WHERE  id = :job_id
             RETURNING id
-        """), {"worker_id": WORKER_ID})
+        """), {"worker_id": WORKER_ID, "job_id": cand_id})
         await db.commit()
         row = result.first()
-        return row[0] if row else None
+        return (row[0], match_reason) if row else (None, None)
+
+
+# ── Heartbeat keepalive ──────────────────────────────────────────────────────
+
+async def _heartbeat_keepalive(job_id: UUID, stop: asyncio.Event) -> None:
+    """Background task that refreshes heartbeat_at every _HEARTBEAT_INTERVAL seconds.
+
+    Runs alongside the analysis so the heartbeat never goes stale while
+    the worker is alive and actively processing. Exits when stop is set.
+    """
+    while not stop.is_set():
+        try:
+            await asyncio.wait_for(stop.wait(), timeout=_HEARTBEAT_INTERVAL)
+            # stop was set — exit
+            return
+        except asyncio.TimeoutError:
+            # Interval elapsed — refresh heartbeat
+            pass
+
+        try:
+            async with async_session_factory() as db:
+                await db.execute(text("""
+                    UPDATE analysis_jobs
+                    SET heartbeat_at = now()
+                    WHERE id = :job_id
+                """), {"job_id": job_id})
+                await db.commit()
+        except Exception as exc:
+            # Heartbeat refresh failure is non-fatal; log and continue.
+            logger.warning("Heartbeat refresh failed for job %s: %s", job_id, exc)
 
 
 # ── Helper functions for PostgreSQL integration ───────────────────────────────
@@ -100,8 +173,13 @@ async def run_pipeline(job_id: UUID) -> None:
         - Calls existing analysis service functions for the actual work.
         - Updates AnalysisJob row at every stage transition.
         - Sets final repo.analysis_status to completed/completed_with_warnings/failed.
+        - Aborts immediately if run_repo_analysis() returns False (duplicate/error).
     """
     started_at = time.monotonic()
+
+    # Start heartbeat keepalive so the job is never reclaimed while alive.
+    hb_stop = asyncio.Event()
+    hb_task = asyncio.create_task(_heartbeat_keepalive(job_id, hb_stop))
 
     async with async_session_factory() as db:
         # Load job and related entities
@@ -111,10 +189,14 @@ async def run_pipeline(job_id: UUID) -> None:
 
         if not job:
             logger.error("run_pipeline: job %s not found", job_id)
+            hb_stop.set()
+            await hb_task
             return
 
         if job.status in TERMINAL:
             logger.info("run_pipeline: job %s already terminal (%s)", job_id, job.status)
+            hb_stop.set()
+            await hb_task
             return
 
         repo = (await db.execute(
@@ -123,6 +205,8 @@ async def run_pipeline(job_id: UUID) -> None:
 
         if not repo:
             logger.error("run_pipeline: repo %s not found for job %s", job.repo_id, job_id)
+            hb_stop.set()
+            await hb_task
             return
 
         # Load user
@@ -149,18 +233,23 @@ async def run_pipeline(job_id: UUID) -> None:
             await reporter.set_stage("parsing")
 
             # ── CALL EXISTING ANALYSIS LOGIC ────────────────────────────
-            # Import the existing analysis function
             from app.services.analysis import run_repo_analysis
 
-            # Call the existing analysis function
-            # This function handles the full analysis including:
-            # - Cloning the repo
-            # - Scanning files
-            # - Parsing code
-            # - Building graph (nodes + edges)
-            # - Persisting to database
-            await run_repo_analysis(repo.id, user.id)
-            
+            analysis_ok = await run_repo_analysis(repo.id, user.id)
+
+            # ── ABORT ON DUPLICATE / FAILURE ────────────────────────────
+            # If run_repo_analysis returned False, it means the analysis
+            # was skipped (already running on another task) or failed.
+            # We must NOT continue to building_graph / GraphScorer / save
+            # because the DB may have 0 rows or stale data for this repo.
+            if not analysis_ok:
+                logger.warning(
+                    "run_pipeline: analysis returned False for job %s repo %s — aborting pipeline",
+                    job_id, repo.full_name,
+                )
+                await reporter.fail("Analysis skipped (duplicate or error)")
+                return
+
             # After the call returns, query the counts from the database
             node_count = (await db.execute(
                 select(func.count()).where(Node.repo_id == repo.id)
@@ -233,6 +322,11 @@ async def run_pipeline(job_id: UUID) -> None:
             )
             await reporter.fail(f"{type(exc).__name__}: {exc}")
 
+        finally:
+            # Stop the heartbeat keepalive task
+            hb_stop.set()
+            await hb_task
+
 
 # ── Worker loop ───────────────────────────────────────────────────────────────
 
@@ -251,31 +345,44 @@ async def worker_loop(stop_event: asyncio.Event) -> None:
         they are cancelled by the event loop shutdown.
 
     Heartbeat:
-        _claim_next_job() sets heartbeat_at. If a worker dies mid-job,
-        the next call to _claim_next_job() will reclaim that job after
-        HEARTBEAT_STALE_SECONDS (90s).
+        _claim_next_job() sets heartbeat_at. A background keepalive task
+        refreshes it every 30 seconds while the pipeline runs. If a worker
+        dies mid-job, the next call to _claim_next_job() will reclaim that
+        job after HEARTBEAT_STALE_SECONDS (90s).
     """
     logger.info("DevBrain worker loop started (worker_id=%s, concurrency=%d)",
                 WORKER_ID, _CONCURRENCY)
 
     while not stop_event.is_set():
         try:
-            job_id = await _claim_next_job()
+            job_id, match_reason = await _claim_next_job()
 
             if job_id is None:
                 # No work available. Sleep briefly then poll again.
                 await asyncio.sleep(1.0)
                 continue
 
-            logger.info("Worker claimed job %s", job_id)
+            # Guard: skip if this process is already running this job.
+            # This is belt-and-suspenders — _claim_next_job also excludes
+            # _running_jobs, but this catches any race window.
+            if job_id in _running_jobs:
+                logger.warning(
+                    "Job %s already running in this process — skipping duplicate claim",
+                    job_id,
+                )
+                continue
+
+            logger.info("Worker claimed job %s (reason: %s)", job_id, match_reason)
 
             # Acquire semaphore before launching task so we cap concurrency.
             await _SEM.acquire()
 
             async def run_and_release(jid: UUID) -> None:
+                _running_jobs.add(jid)
                 try:
                     await run_pipeline(jid)
                 finally:
+                    _running_jobs.discard(jid)
                     _SEM.release()
 
             asyncio.create_task(run_and_release(job_id))

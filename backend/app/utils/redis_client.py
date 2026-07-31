@@ -57,6 +57,8 @@ async def init_redis() -> None:
             settings.redis_url,
             encoding="utf-8",
             decode_responses=True,
+            health_check_interval=30,
+            socket_keepalive=True,
         )
         await client.ping()
         _redis_client = client

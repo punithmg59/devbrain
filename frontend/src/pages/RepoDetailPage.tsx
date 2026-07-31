@@ -480,13 +480,18 @@ export default function RepoDetailPage() {
     });
   };
 
+  const [reanalyzing, setReanalyzing] = useState(false);
+
   const handleReanalyze = async () => {
     if (!repoId) return;
+    setReanalyzing(true);
     try {
       await repoService.analyze(repoId);
       refetchRepo();
     } catch {
       // silent
+    } finally {
+      setReanalyzing(false);
     }
   };
 
@@ -830,9 +835,11 @@ export default function RepoDetailPage() {
                   )}
                   <button
                     onClick={handleReanalyze}
-                    className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-lg transition-colors"
+                    disabled={reanalyzing}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-purple-600/20 hover:bg-purple-600/30 border border-purple-500/40 text-purple-300 hover:text-white rounded-lg transition-colors disabled:opacity-50"
+                    title="Re-run codebase analysis"
                   >
-                    <RefreshCw className="w-3.5 h-3.5" />
+                    <RefreshCw className={`w-3.5 h-3.5 ${reanalyzing ? "animate-spin" : ""}`} />
                     Re-analyze
                   </button>
                 </div>

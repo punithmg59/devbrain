@@ -8,21 +8,46 @@ import { ConnectedRepo, repoService } from "../services/repoService";
 import { isAnalyzed } from "../types/repo";
 import { useToast } from "../components/Toast";
 
-const ACTIVE_STATUSES = new Set(["queued", "analyzing"]);
+const ACTIVE_STATUSES = new Set([
+  "queued",
+  "cloning",
+  "scanning",
+  "parsing",
+  "building_graph",
+  "saving",
+  "analyzing",
+  "pending",
+]);
+
+function formatStatusLabel(status: string): string {
+  switch (status) {
+    case "building_graph":
+      return "Building Graph";
+    case "completed_with_warnings":
+      return "Completed (Warnings)";
+    default:
+      return status.charAt(0).toUpperCase() + status.slice(1);
+  }
+}
 
 function statusStyle(status: string): string {
   switch (status) {
     case "completed":
-      return "bg-green-900/30 text-green-400";
+      return "bg-green-900/30 text-green-400 border border-green-700/30";
     case "completed_with_warnings":
-      return "bg-amber-900/30 text-amber-400";
+      return "bg-amber-900/30 text-amber-400 border border-amber-700/30";
     case "analyzing":
     case "queued":
-      return "bg-blue-900/30 text-blue-400";
+    case "cloning":
+    case "scanning":
+    case "parsing":
+    case "building_graph":
+    case "saving":
+      return "bg-blue-900/30 text-blue-400 border border-blue-700/30";
     case "failed":
-      return "bg-red-900/30 text-red-400";
+      return "bg-red-900/30 text-red-400 border border-red-700/30";
     default:
-      return "bg-yellow-900/30 text-yellow-400";
+      return "bg-yellow-900/30 text-yellow-400 border border-yellow-700/30";
   }
 }
 
@@ -100,12 +125,13 @@ export default function DashboardPage() {
     };
 
     poll();
-    const id = setInterval(poll, 5000);
+    const id = setInterval(poll, 2000);
     return () => clearInterval(id);
   }, [hasActiveAnalysis]);
 
   const handleAnalyze = async (repoId: string) => {
     setAnalyzingIds((prev) => new Set(prev).add(repoId));
+    addToast("Starting repository analysis...", "info", 3000);
     try {
       await repoService.analyze(repoId);
       setRepos((prev) =>
@@ -113,8 +139,9 @@ export default function DashboardPage() {
           r.id === repoId ? { ...r, analysis_status: "queued" } : r
         )
       );
+      addToast("Analysis queued successfully", "success", 3000);
     } catch {
-      // keep UI unchanged on error
+      addToast("Failed to queue analysis", "error");
     } finally {
       setAnalyzingIds((prev) => {
         const next = new Set(prev);
@@ -231,12 +258,12 @@ export default function DashboardPage() {
                         </span>
                         {repo.language && <span>{repo.language}</span>}
                         <span
-                          className={`px-1.5 py-0.5 rounded capitalize ${statusStyle(repo.analysis_status)}`}
+                          className={`px-2 py-0.5 rounded capitalize text-xs font-medium flex items-center ${statusStyle(repo.analysis_status)}`}
                         >
                           {isRunning && (
-                            <Loader2 className="inline w-3 h-3 mr-1 animate-spin" />
+                            <Loader2 className="w-3 h-3 mr-1 animate-spin shrink-0" />
                           )}
-                          {repo.analysis_status}
+                          {formatStatusLabel(repo.analysis_status)}
                         </span>
                         {isAnalyzed(repo.analysis_status) && (
                           <span className="text-gray-500">
@@ -247,11 +274,22 @@ export default function DashboardPage() {
                       </div>
                     </div>
                     <div className="flex items-center gap-2 shrink-0 relative">
+                      {canAnalyze && (
+                        <button
+                          onClick={() => handleAnalyze(repo.id)}
+                          disabled={analyzingIds.has(repo.id)}
+                          className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-purple-600/20 hover:bg-purple-600/30 border border-purple-500/40 text-purple-300 hover:text-white rounded-lg transition-colors disabled:opacity-50"
+                          title="Run codebase analysis"
+                        >
+                          <RefreshCw className={`w-3.5 h-3.5 ${analyzingIds.has(repo.id) ? "animate-spin" : ""}`} />
+                          {isAnalyzed(repo.analysis_status) ? "Re-analyze" : "Analyze"}
+                        </button>
+                      )}
                       {isAnalyzed(repo.analysis_status) && (
                         <>
                           <Link
                             to={`/repos/${repo.id}/impact`}
-                            className="hidden sm:flex items-center gap-1 px-3 py-1.5 text-sm border border-purple-600 text-purple-400 hover:bg-purple-900/30 rounded-lg transition-colors"
+                            className="hidden sm:flex items-center gap-1 px-3 py-1.5 text-sm border border-purple-600/50 text-purple-400 hover:bg-purple-900/30 rounded-lg transition-colors"
                           >
                             <Zap className="w-3.5 h-3.5" />
                             Impact Radar

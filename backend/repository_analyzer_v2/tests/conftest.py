@@ -1,4 +1,11 @@
+import os
+import sys
 import pathlib
+
+_pkg_root = pathlib.Path(__file__).resolve().parent.parent
+if str(_pkg_root) not in sys.path:
+    sys.path.insert(0, str(_pkg_root))
+
 from typing import Any, List
 import pytest
 import pytest_asyncio

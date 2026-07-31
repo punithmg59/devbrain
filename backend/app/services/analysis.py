@@ -66,11 +66,16 @@ async def recover_stale_analysis(db: AsyncSession, repo: Repo) -> bool:
     return True
 
 
-async def run_repo_analysis(repo_id: UUID, user_id: UUID) -> None:
+async def run_repo_analysis(repo_id: UUID, user_id: UUID) -> bool:
+    """Run full analysis for a repository.
+
+    Returns True if analysis completed (or completed_with_warnings).
+    Returns False if skipped (already running, not found, error).
+    """
     repo_key = str(repo_id)
     if repo_key in _active_analyses:
         logger.info("Analysis already running for repo %s", repo_id)
-        return
+        return False
 
     _active_analyses.add(repo_key)
     clone_path: str | None = None
@@ -85,19 +90,19 @@ async def run_repo_analysis(repo_id: UUID, user_id: UUID) -> None:
             repo = result.scalar_one_or_none()
             if not repo:
                 logger.error("Repo %s not found for analysis", repo_id)
-                return
+                return False
 
             user_result = await db.execute(select(User).where(User.id == user_id))
             user = user_result.scalar_one_or_none()
             if not user:
                 logger.error("User %s not found for analysis", user_id)
-                return
+                return False
 
             token = await get_github_token(user, db)
             if not token:
                 repo.analysis_status = "failed"
                 await db.commit()
-                return
+                return False
 
             repo.analysis_status = "analyzing"
             await db.commit()
@@ -209,6 +214,7 @@ async def run_repo_analysis(repo_id: UUID, user_id: UUID) -> None:
                 stats["total_files"],
                 stats["total_functions"],
             )
+            return True
         except asyncio.TimeoutError:
             logger.error("Analysis timed out for repo %s", repo_id)
             await db.rollback()
@@ -217,6 +223,7 @@ async def run_repo_analysis(repo_id: UUID, user_id: UUID) -> None:
             if repo:
                 repo.analysis_status = "failed"
                 await db.commit()
+            return False
         except Exception:
             logger.exception("Analysis failed for repo %s", repo_id)
             await db.rollback()
@@ -225,6 +232,7 @@ async def run_repo_analysis(repo_id: UUID, user_id: UUID) -> None:
             if repo:
                 repo.analysis_status = "failed"
                 await db.commit()
+            return False
         finally:
             if clone_path:
                 await asyncio.to_thread(cleanup_clone, clone_path)

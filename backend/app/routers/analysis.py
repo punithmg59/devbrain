@@ -34,6 +34,8 @@ async def _get_user_repo(
     return repo
 
 
+from datetime import datetime, timezone
+
 @router.post("/api/repos/{repo_id}/analyze", response_model=AnalysisTriggerResponse)
 async def trigger_analysis(
     repo_id: str,
@@ -47,15 +49,30 @@ async def trigger_analysis(
         select(AnalysisJob)
         .where(AnalysisJob.repo_id == repo.id)
         .where(AnalysisJob.status.notin_(["completed", "completed_with_warnings", "failed"]))
+        .order_by(AnalysisJob.created_at.desc())
         .limit(1)
     )).scalar_one_or_none()
 
     if existing_job:
-        return AnalysisTriggerResponse(
-            repo_id=str(repo.id),
-            status=existing_job.status,
-            message="Analysis already in progress",
-        )
+        from app.services.analysis import is_analysis_running
+        now_utc = datetime.now(timezone.utc)
+        hb = existing_job.heartbeat_at or existing_job.created_at
+        if hb and hb.tzinfo is None:
+            hb = hb.replace(tzinfo=timezone.utc)
+        is_stale = hb is None or (now_utc - hb).total_seconds() > 90
+
+        if not is_analysis_running(repo.id) and is_stale:
+            logger.warning("Marking stale job %s as failed to allow re-analysis for repo %s", existing_job.id, repo.id)
+            existing_job.status = "failed"
+            existing_job.error_message = "Superceded by manual re-analysis request"
+            await db.flush()
+        else:
+            return AnalysisTriggerResponse(
+                repo_id=str(repo.id),
+                status=existing_job.status,
+                message="Analysis already in progress",
+                job_id=str(existing_job.id),
+            )
 
     # Create a new AnalysisJob row
     job = AnalysisJob(
