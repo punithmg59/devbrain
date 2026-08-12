@@ -5,10 +5,9 @@ from datetime import datetime
 from typing import Any
 
 from sqlalchemy import Boolean, DateTime, Float, ForeignKey, String, Text, UniqueConstraint, func, text
-from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.database import Base
+from app.database import Base, DialectJSON, DialectUUID
 
 
 class Workflow(Base):
@@ -16,12 +15,12 @@ class Workflow(Base):
     __table_args__ = (UniqueConstraint("repo_id", "name", name="uq_workflows_repo_name"),)
 
     id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+        DialectUUID(),
         primary_key=True,
-        server_default=text("gen_random_uuid()"),
+        default=uuid.uuid4,
     )
     repo_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+        DialectUUID(),
         ForeignKey("repos.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
@@ -32,7 +31,7 @@ class Workflow(Base):
     workflow_type: Mapped[str] = mapped_column(String(64), nullable=False)
     confidence: Mapped[float] = mapped_column(Float, server_default="0.0", nullable=False)
     reasoning: Mapped[str | None] = mapped_column(Text, nullable=True)
-    source_evidence: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    source_evidence: Mapped[dict[str, Any] | None] = mapped_column(DialectJSON(), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),
@@ -64,18 +63,18 @@ class WorkflowNode(Base):
     __table_args__ = (UniqueConstraint("workflow_id", "node_id", name="uq_workflow_nodes_wf_node"),)
 
     id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+        DialectUUID(),
         primary_key=True,
-        server_default=text("gen_random_uuid()"),
+        default=uuid.uuid4,
     )
     workflow_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+        DialectUUID(),
         ForeignKey("workflows.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
     node_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+        DialectUUID(),
         ForeignKey("nodes.id", ondelete="CASCADE"),
         nullable=False,
     )
@@ -94,17 +93,17 @@ class WorkflowFile(Base):
     __table_args__ = (UniqueConstraint("workflow_id", "file_id", name="uq_workflow_files_wf_file"),)
 
     id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+        DialectUUID(),
         primary_key=True,
-        server_default=text("gen_random_uuid()"),
+        default=uuid.uuid4,
     )
     workflow_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+        DialectUUID(),
         ForeignKey("workflows.id", ondelete="CASCADE"),
         nullable=False,
     )
     file_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+        DialectUUID(),
         ForeignKey("repo_files.id", ondelete="CASCADE"),
         nullable=False,
     )
@@ -122,12 +121,12 @@ class WorkflowApi(Base):
     __table_args__ = (UniqueConstraint("workflow_id", "api_route", name="uq_workflow_apis_wf_route"),)
 
     id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+        DialectUUID(),
         primary_key=True,
-        server_default=text("gen_random_uuid()"),
+        default=uuid.uuid4,
     )
     workflow_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+        DialectUUID(),
         ForeignKey("workflows.id", ondelete="CASCADE"),
         nullable=False,
     )
@@ -148,12 +147,12 @@ class WorkflowService(Base):
     )
 
     id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+        DialectUUID(),
         primary_key=True,
-        server_default=text("gen_random_uuid()"),
+        default=uuid.uuid4,
     )
     workflow_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+        DialectUUID(),
         ForeignKey("workflows.id", ondelete="CASCADE"),
         nullable=False,
     )
@@ -171,19 +170,19 @@ class WorkflowFeedback(Base):
     __tablename__ = "workflow_feedback"
 
     id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+        DialectUUID(),
         primary_key=True,
-        server_default=text("gen_random_uuid()"),
+        default=uuid.uuid4,
     )
     repo_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+        DialectUUID(),
         ForeignKey("repos.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
     query: Mapped[str] = mapped_column(Text, nullable=False)
     workflow_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True),
+        DialectUUID(),
         ForeignKey("workflows.id", ondelete="SET NULL"),
         nullable=True,
     )

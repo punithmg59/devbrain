@@ -29,7 +29,8 @@ class FileResponse(BaseModel):
     depth: int
     size_bytes: int
     line_count: int
-    content_preview: Optional[str] = None
+    # content_preview is now encrypted at rest and not exposed in API responses
+    # for security. If needed, implement a separate secure endpoint for decryption.
     importance_score: float
     model_config = ConfigDict(from_attributes=True)
 
@@ -47,7 +48,8 @@ class NodeResponse(BaseModel):
     full_path: str
     start_line: Optional[int] = None
     end_line: Optional[int] = None
-    raw_code: Optional[str] = None
+    # raw_code is now encrypted at rest and not exposed in API responses
+    # for security. If needed, implement a separate secure endpoint for decryption.
     signature: Optional[str] = None
     calls: List[str] = []
     called_by: List[str] = []

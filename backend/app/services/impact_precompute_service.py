@@ -108,7 +108,7 @@ class ImpactPrecomputeService:
         rows = (
             await db.execute(
                 text("""
-                    SELECT wn.node_id::text, COUNT(DISTINCT wn.workflow_id) AS c
+                    SELECT CAST(wn.node_id AS TEXT) AS node_id, COUNT(DISTINCT wn.workflow_id) AS c
                     FROM workflow_nodes wn
                     JOIN workflows w ON w.id = wn.workflow_id
                     WHERE w.repo_id = :repo_id
@@ -123,7 +123,7 @@ class ImpactPrecomputeService:
         rows = (
             await db.execute(
                 text("""
-                    SELECT wn.node_id::text, COUNT(DISTINCT ws.service_name) AS c
+                    SELECT CAST(wn.node_id AS TEXT) AS node_id, COUNT(DISTINCT ws.service_name) AS c
                     FROM workflow_nodes wn
                     JOIN workflows w ON w.id = wn.workflow_id
                     JOIN workflow_services ws ON ws.workflow_id = w.id
@@ -157,7 +157,7 @@ class ImpactPrecomputeService:
         rows = (
             await db.execute(
                 text("""
-                    SELECT id::text FROM nodes
+                    SELECT CAST(id AS TEXT) FROM nodes
                     WHERE repo_id = :repo_id
                       AND (node_type = 'api_route' OR route_path IS NOT NULL)
                 """),

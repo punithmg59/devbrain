@@ -1,17 +1,43 @@
 import httpx
+import logging
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import User
 from app.utils.redis_client import get_redis, is_redis_available
+from app.security.encryption import get_encryption_service, EncryptionError
 
+logger = logging.getLogger(__name__)
 TOKEN_TTL = 2592000  # 30 days
 
 
 async def save_github_token(user: User, access_token: str, db: AsyncSession) -> None:
-    user.github_access_token = access_token
-    if is_redis_available():
-        await get_redis().setex(f"ghtoken:{user.id}", TOKEN_TTL, access_token)
+    """Encrypt and save GitHub access token.
+    
+    The token is encrypted before storing in the database and Redis.
+    """
+    try:
+        encryption_service = get_encryption_service()
+        
+        # Encrypt token with user context binding
+        user_context = str(user.id).encode('utf-8')
+        encrypted_token = await encryption_service.encrypt(
+            access_token,
+            associated_data=user_context,
+        )
+        
+        user.github_access_token = encrypted_token
+        
+        # Also cache encrypted token in Redis
+        if is_redis_available():
+            await get_redis().setex(f"ghtoken:{user.id}", TOKEN_TTL, encrypted_token)
+            
+    except EncryptionError as e:
+        logger.error("Failed to encrypt GitHub token for user %s: %s", user.id, e)
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to securely store GitHub token"
+        ) from e
 
 
 async def clear_github_token(user: User) -> None:
@@ -21,15 +47,50 @@ async def clear_github_token(user: User) -> None:
 
 
 async def get_github_token(user: User, db: AsyncSession) -> str:
+    """Decrypt and return GitHub access token.
+    
+    The token is decrypted from the database or Redis cache.
+    """
+    encryption_service = get_encryption_service()
+    user_context = str(user.id).encode('utf-8')
+    
+    # Try Redis cache first
     if is_redis_available():
-        token = await get_redis().get(f"ghtoken:{user.id}")
-        if token:
-            return token
-
+        encrypted_token = await get_redis().get(f"ghtoken:{user.id}")
+        if encrypted_token:
+            try:
+                decrypted_token = await encryption_service.decrypt(
+                    encrypted_token,
+                    associated_data=user_context,
+                )
+                return decrypted_token
+            except EncryptionError as e:
+                logger.warning("Failed to decrypt cached token for user %s: %s", user.id, e)
+                # Fall through to database
+    
+    # Try database
     if user.github_access_token:
-        if is_redis_available():
-            await get_redis().setex(f"ghtoken:{user.id}", TOKEN_TTL, user.github_access_token)
-        return user.github_access_token
+        try:
+            decrypted_token = await encryption_service.decrypt(
+                user.github_access_token,
+                associated_data=user_context,
+            )
+            
+            # Cache decrypted token in Redis for future use
+            if is_redis_available():
+                await get_redis().setex(
+                    f"ghtoken:{user.id}",
+                    TOKEN_TTL,
+                    user.github_access_token  # Store encrypted version
+                )
+            
+            return decrypted_token
+        except EncryptionError as e:
+            logger.error("Failed to decrypt GitHub token for user %s: %s", user.id, e)
+            raise HTTPException(
+                status_code=500,
+                detail="Failed to decrypt GitHub token"
+            ) from e
 
     raise HTTPException(
         status_code=401,

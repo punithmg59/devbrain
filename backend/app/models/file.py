@@ -3,10 +3,9 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 
 from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint, func, text
-from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.database import Base
+from app.database import Base, DialectUUID
 
 if TYPE_CHECKING:
     from app.models.node import Node
@@ -18,12 +17,12 @@ class RepoFile(Base):
     __table_args__ = (UniqueConstraint("repo_id", "file_path", name="uq_repo_files_repo_id_file_path"),)
 
     id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+        DialectUUID(),
         primary_key=True,
-        server_default=text("gen_random_uuid()"),
+        default=uuid.uuid4,
     )
     repo_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+        DialectUUID(),
         ForeignKey("repos.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
@@ -37,6 +36,7 @@ class RepoFile(Base):
     size_bytes: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     line_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     content_preview: Mapped[str | None] = mapped_column(Text, nullable=True)
+    content_preview_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
     s3_key: Mapped[str | None] = mapped_column(String(500), nullable=True)
     importance_score: Mapped[float] = mapped_column(Float, default=0.5, server_default="0.5")
     content_hash: Mapped[str | None] = mapped_column(

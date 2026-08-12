@@ -12,6 +12,7 @@ from app.models import Edge, FolderTree, Node, Repo, RepoFile, User
 from app.services.repo_fetcher import cleanup_clone, clone_github_repo
 from app.services.v2_analyzer_adapter import run_v2_analysis_collection, AnalysisPayloadV2
 from app.utils.github import get_github_token
+from app.security.encryption import get_encryption_service, EncryptionError
 
 logger = logging.getLogger(__name__)
 
@@ -329,9 +330,30 @@ async def _clear_repo_analysis(db: AsyncSession, repo_id: UUID) -> bool:
 
 
 async def _persist_analysis(db: AsyncSession, repo: Repo, payload: AnalysisPayloadV2) -> dict:
+    encryption_service = get_encryption_service()
+    repo_context = str(repo.id).encode('utf-8')
+    
     file_models: list[RepoFile] = []
     for f in payload.files:
-        file_models.append(RepoFile(repo_id=repo.id, **f))
+        # Encrypt content_preview if present
+        content_preview = f.get("content_preview")
+        content_preview_encrypted = None
+        
+        if content_preview:
+            try:
+                content_preview_encrypted = await encryption_service.encrypt(
+                    content_preview,
+                    associated_data=repo_context,
+                )
+                # Clear plaintext after encryption
+                f["content_preview"] = None
+            except EncryptionError as e:
+                logger.error("Failed to encrypt content_preview for %s: %s", f["file_path"], e)
+                # Fall back to not storing preview rather than storing plaintext
+                f["content_preview"] = None
+        
+        file_data = {**f, "content_preview_encrypted": content_preview_encrypted}
+        file_models.append(RepoFile(repo_id=repo.id, **file_data))
     db.add_all(file_models)
     await db.flush()
 
@@ -351,6 +373,24 @@ async def _persist_analysis(db: AsyncSession, repo: Repo, payload: AnalysisPaylo
     node_models: list[Node] = []
     for n in unique_nodes:
         file_id = path_to_file_id.get(n["file_path"])
+        
+        # Encrypt raw_code if present
+        raw_code = n.get("raw_code")
+        raw_code_encrypted = None
+        
+        if raw_code:
+            try:
+                raw_code_encrypted = await encryption_service.encrypt(
+                    raw_code,
+                    associated_data=repo_context,
+                )
+                # Clear plaintext after encryption
+                raw_code = None
+            except EncryptionError as e:
+                logger.error("Failed to encrypt raw_code for %s: %s", n["full_path"], e)
+                # Fall back to not storing code rather than storing plaintext
+                raw_code = None
+        
         node_models.append(
             Node(
                 repo_id=repo.id,
@@ -360,7 +400,8 @@ async def _persist_analysis(db: AsyncSession, repo: Repo, payload: AnalysisPaylo
                 full_path=n["full_path"],
                 start_line=n["start_line"],
                 end_line=n["end_line"],
-                raw_code=n.get("raw_code"),
+                raw_code=raw_code,
+                raw_code_encrypted=raw_code_encrypted,
                 signature=n.get("signature"),
                 calls=n.get("calls", []),
                 imports=n.get("imports", []),
