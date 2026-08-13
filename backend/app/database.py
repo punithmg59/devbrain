@@ -2,7 +2,9 @@ import asyncio
 import logging
 import os
 import ssl
+import tempfile
 from collections.abc import AsyncGenerator
+from urllib.parse import urlparse
 
 from sqlalchemy import inspect, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -81,66 +83,183 @@ DialectArray = _DialectArray
 DialectUUID = _DialectUUID
 
 
-def _build_async_connect_args(database_url: str, environment: str) -> dict:
-    """Build asyncpg connect_args for Supabase/PostgreSQL with correct SSL configuration.
+def _build_ssl_context(
+    environment: str,
+    ca_cert_path: str | None = None,
+    ca_cert_inline: str | None = None,
+) -> ssl.SSLContext | None:
+    """Build and return an ssl.SSLContext for asyncpg, or None for non-SSL drivers.
 
-    Production (Railway):
-        Uses a verified SSL context loaded from the system CA bundle
-        (/etc/ssl/certs/ca-certificates.crt on Debian/Ubuntu, installed by
-        the ca-certificates package in the Dockerfile). This ensures Supabase's
-        certificate chain is verifiable without disabling any security checks.
+    CA Certificate resolution order (production only):
+      1. DATABASE_SSL_CA_CERT_PATH  — path to a PEM file on disk (highest priority)
+      2. DATABASE_SSL_CA_CERT       — inline PEM content written to a temp file
+      3. Debian system CA bundle    — /etc/ssl/certs/ca-certificates.crt (Docker)
+      4. Python default CA bundle   — auto-discovered by ssl module (fallback)
 
-    Development (local/Windows):
-        asyncpg on Windows cannot verify Supabase's cert chain through the
-        Windows cert store, so verification is relaxed for local dev only.
-        CERT_NONE is NEVER used in production.
+    Development:
+      Hostname verification is relaxed (CERT_NONE) for Windows environments
+      where asyncpg cannot verify Supabase's cert chain through the OS cert store.
+      CERT_NONE is NEVER used in production.
 
-    IMPORTANT: PgBouncer transaction pooling (pooler.supabase.com:6543) does not
-    support prepared statements. statement_cache_size=0 avoids
-    DuplicatePreparedStatementError.
+    Returns:
+        ssl.SSLContext — always returned (either verified or relaxed for dev)
     """
-    # Only apply SSL args for Supabase connections.
-    is_supabase = "supabase" in database_url or "pooler.supabase.com" in database_url
-    if not is_supabase:
-        return {}
+    is_dev = environment.lower() == "development"
 
-    if environment.lower() == "development":
-        # Local dev on Windows: relax cert verification only.
-        # This is intentional and limited to development.
+    if is_dev:
+        # Local dev: relax cert verification so developers on Windows can connect.
+        # This is intentional and must NEVER appear in production.
         ctx = ssl.create_default_context()
         ctx.check_hostname = False
         ctx.verify_mode = ssl.CERT_NONE
         logger.warning(
-            "SSL certificate verification DISABLED — development mode only. "
-            "This must NEVER appear in production logs."
+            "[DB-SSL] Certificate verification DISABLED — development mode only. "
+            "This message must NEVER appear in production Railway logs."
         )
-        ssl_arg = ctx
-    else:
-        # Production: full certificate verification.
-        # Load the system CA bundle explicitly so verification is deterministic
-        # inside the Docker container (python:3.12-slim + ca-certificates).
-        if os.path.isfile(_DEBIAN_CA_BUNDLE):
-            ctx = ssl.create_default_context(cafile=_DEBIAN_CA_BUNDLE)
-            logger.info(
-                "SSL context loaded from system CA bundle: %s", _DEBIAN_CA_BUNDLE
-            )
+        return ctx
+
+    # ── Production: full certificate verification ─────────────────────────────
+    # Determine which CA file to use, in priority order.
+    _tmp_file = None  # keep reference to prevent GC of NamedTemporaryFile
+    ca_file: str | None = None
+    ca_source: str = "unknown"
+
+    try:
+        if ca_cert_path:
+            # Priority 1: explicit file path from DATABASE_SSL_CA_CERT_PATH
+            if not os.path.isfile(ca_cert_path):
+                raise FileNotFoundError(
+                    f"DATABASE_SSL_CA_CERT_PATH points to a non-existent file: {ca_cert_path!r}. "
+                    "Download the Supabase CA cert from Dashboard → Database → SSL."
+                )
+            ca_file = ca_cert_path
+            ca_source = f"DATABASE_SSL_CA_CERT_PATH ({ca_cert_path})"
+            logger.info("[DB-SSL] Using Supabase CA certificate from path: %s", ca_cert_path)
+
+        elif ca_cert_inline:
+            # Priority 2: inline PEM from DATABASE_SSL_CA_CERT env var.
+            # Railway stores secrets as env vars; this avoids filesystem concerns.
+            # Normalise escaped newlines that shells/Railway may encode as literal \n.
+            pem_content = ca_cert_inline.replace("\\n", "\n")
+            if not pem_content.strip().startswith("-----BEGIN"):
+                raise ValueError(
+                    "DATABASE_SSL_CA_CERT does not look like a valid PEM certificate. "
+                    "Ensure it starts with '-----BEGIN CERTIFICATE-----'."
+                )
+            # Write to a temporary file so ssl.create_default_context(cafile=) can load it.
+            # We keep _tmp_file alive for the lifetime of this function; the returned ctx
+            # holds the loaded cert in memory, so the file can be deleted after load.
+            with tempfile.NamedTemporaryFile(
+                mode="w", suffix=".pem", delete=False, prefix="supabase_ca_"
+            ) as tmp:
+                tmp.write(pem_content)
+                _tmp_file = tmp.name
+            ca_file = _tmp_file
+            ca_source = "DATABASE_SSL_CA_CERT (inline env var)"
+            logger.info("[DB-SSL] Using Supabase CA certificate from inline DATABASE_SSL_CA_CERT")
+
+        elif os.path.isfile(_DEBIAN_CA_BUNDLE):
+            # Priority 3: Debian system CA bundle (docker image with ca-certificates installed).
+            ca_file = _DEBIAN_CA_BUNDLE
+            ca_source = f"system CA bundle ({_DEBIAN_CA_BUNDLE})"
+            logger.info("[DB-SSL] Using system CA bundle: %s", _DEBIAN_CA_BUNDLE)
+
         else:
-            # Fallback: let Python discover the CA bundle automatically.
-            # Works on macOS / Windows in local production-like runs.
-            ctx = ssl.create_default_context()
-            logger.info(
-                "SSL context using default CA bundle (system CA bundle not found at %s)",
+            # Priority 4: Python auto-discovers the platform CA bundle.
+            # Works on macOS / CI. On Linux without ca-certificates this may fail.
+            ca_file = None
+            ca_source = "Python default CA bundle (auto-discovered)"
+            logger.warning(
+                "[DB-SSL] No explicit CA certificate configured and system CA bundle not found at %s. "
+                "Falling back to Python default CA bundle. "
+                "Set DATABASE_SSL_CA_CERT_PATH or install ca-certificates to ensure "
+                "Supabase certificate verification succeeds.",
                 _DEBIAN_CA_BUNDLE,
             )
-        # Ensure hostname and certificate verification are both active (defaults,
-        # but stated explicitly for auditing purposes).
+
+        ctx = ssl.create_default_context(cafile=ca_file)
+        # Explicitly assert both checks are active — defaults, but stated for auditability.
         ctx.check_hostname = True
         ctx.verify_mode = ssl.CERT_REQUIRED
-        ssl_arg = ctx
-        logger.info("SSL certificate verification: ENABLED (CERT_REQUIRED + check_hostname)")
+        logger.info(
+            "[DB-SSL] SSL context ready: CERT_REQUIRED + check_hostname=True. CA source: %s",
+            ca_source,
+        )
+        return ctx
 
-    # CRITICAL: statement_cache_size=0 is required for PgBouncer transaction pooling.
-    return {"ssl": ssl_arg, "statement_cache_size": 0}
+    finally:
+        # Clean up the temporary file if we wrote one (cert is now loaded in ctx).
+        if _tmp_file and os.path.exists(_tmp_file):
+            try:
+                os.unlink(_tmp_file)
+            except OSError:
+                pass  # Non-fatal; temp files are cleaned up at process exit anyway.
+
+
+def _build_async_connect_args(
+    database_url: str,
+    environment: str,
+    ca_cert_path: str | None = None,
+    ca_cert_inline: str | None = None,
+) -> dict:
+    """Build asyncpg connect_args dict for a Supabase/PostgreSQL connection.
+
+    For non-Supabase URLs (e.g. local PostgreSQL, SQLite) returns {}.
+
+    Args:
+        database_url:   The full database URL (credentials not logged).
+        environment:    'development' relaxes cert verification; anything else is production.
+        ca_cert_path:   Path to Supabase CA PEM file (DATABASE_SSL_CA_CERT_PATH).
+        ca_cert_inline: Inline PEM content           (DATABASE_SSL_CA_CERT).
+
+    IMPORTANT: PgBouncer/Supavisor transaction pooling (port 6543) does not support
+    prepared statements. statement_cache_size=0 avoids DuplicatePreparedStatementError.
+    """
+    is_supabase = "supabase" in database_url or "pooler.supabase.com" in database_url
+    if not is_supabase:
+        return {}
+
+    ssl_ctx = _build_ssl_context(environment, ca_cert_path, ca_cert_inline)
+    # CRITICAL: statement_cache_size=0 is required for PgBouncer/Supavisor transaction pooling.
+    return {"ssl": ssl_ctx, "statement_cache_size": 0}
+
+
+def log_db_connection_info(database_url: str, connect_args: dict, environment: str) -> None:
+    """Log safe connection diagnostics — never logs credentials or certificate contents.
+
+    Logged fields:
+        - database host
+        - database port
+        - SSL enabled
+        - CA certificate configured
+        - environment
+    """
+    try:
+        parsed = urlparse(database_url)
+        host = parsed.hostname or "(unknown)"
+        port = parsed.port or "(default)"
+    except Exception:
+        host = "(parse error)"
+        port = "(parse error)"
+
+    ssl_arg = connect_args.get("ssl")
+    ssl_enabled = ssl_arg is not None
+    ca_configured: str
+    if isinstance(ssl_arg, ssl.SSLContext):
+        ca_configured = (
+            "YES (CERT_REQUIRED)" if ssl_arg.verify_mode == ssl.CERT_REQUIRED
+            else "relaxed (CERT_NONE — dev mode)"
+        )
+    elif ssl_enabled:
+        ca_configured = "YES (raw bool)"
+    else:
+        ca_configured = "N/A"
+
+    logger.info(
+        "[DB] Connection info — host: %s | port: %s | SSL enabled: %s | "
+        "CA certificate: %s | environment: %s",
+        host, port, ssl_enabled, ca_configured, environment,
+    )
 
 
 # Fix: Use session pooling port (5432) instead of transaction pooling (6543)
@@ -148,7 +267,15 @@ def _build_async_connect_args(database_url: str, environment: str) -> dict:
 # Session pooling supports prepared statements and is compatible with SQLAlchemy/asyncpg
 database_url = settings.database_url.replace(':6543', ':5432')
 
-_connect_args = _build_async_connect_args(database_url, settings.environment)
+_connect_args = _build_async_connect_args(
+    database_url,
+    settings.environment,
+    ca_cert_path=settings.database_ssl_ca_cert_path,
+    ca_cert_inline=settings.database_ssl_ca_cert,
+)
+
+# Log safe diagnostics at module import time (production startup).
+log_db_connection_info(database_url, _connect_args, settings.environment)
 
 # SQLite (aiosqlite) uses StaticPool / NullPool and does not support pool_size.
 _is_sqlite = database_url.startswith("sqlite")
