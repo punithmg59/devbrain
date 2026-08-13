@@ -2,10 +2,9 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import DateTime, Float, ForeignKey, String, UniqueConstraint, func, text
-from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.database import Base
+from app.database import Base, DialectUUID
 
 
 class Alias(Base):
@@ -15,23 +14,23 @@ class Alias(Base):
     )
 
     id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+        DialectUUID(),
         primary_key=True,
-        server_default=text("gen_random_uuid()"),
+        default=uuid.uuid4,
     )
     repo_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+        DialectUUID(),
         ForeignKey("repos.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
     node_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True),
+        DialectUUID(),
         ForeignKey("nodes.id", ondelete="CASCADE"),
         nullable=True,
     )
     file_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True),
+        DialectUUID(),
         ForeignKey("repo_files.id", ondelete="CASCADE"),
         nullable=True,
     )

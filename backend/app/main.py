@@ -14,7 +14,7 @@ from sentry_sdk.integrations.fastapi import FastApiIntegration
 from sqlalchemy.exc import ProgrammingError
 
 from app.config import get_settings
-from app.database import init_db, test_connection, validate_schema
+from app.database import db_connect_with_backoff, init_db, test_connection, validate_schema
 from app.routers import (
     analysis,
     architecture,
@@ -136,17 +136,30 @@ async def startup_event() -> None:
     except Exception as e:
         logger.error("Schema validation failed: %s", e)
 
-    # 4. Connection test
-    connected = await test_connection()
-    if connected:
+    # 4. Database connectivity check with exponential backoff.
+    # This replaces a bare test_connection() call so that transient startup
+    # failures (e.g. Supabase cold-start, network blip) are retried gracefully
+    # instead of causing the worker loop to enter a tight error cycle.
+    db_ok = await db_connect_with_backoff(max_attempts=5, base_delay=2.0, max_delay=60.0)
+    if db_ok:
         logger.info("Database: connected")
     else:
-        logger.warning("Database: connection failed")
+        logger.warning(
+            "Database: connection could not be established after retries. "
+            "Worker loop will NOT start. Check DATABASE_URL and Supabase project status."
+        )
 
-    # 5. Start worker loop
+    # 5. Start worker loop — only if DB is reachable.
+    # Avoids a tight error loop (every 1-2 s) when the database is down.
     _stop_event = asyncio.Event()
-    _worker_task = asyncio.create_task(_worker_loop(_stop_event))
-    logger.info("DevBrain worker loop started")
+    if db_ok:
+        _worker_task = asyncio.create_task(_worker_loop(_stop_event))
+        logger.info("DevBrain worker loop started")
+    else:
+        logger.error(
+            "DevBrain worker loop NOT started (database unreachable). "
+            "Redeploy or restore the Supabase project to activate the worker."
+        )
 
     # 6. Pre-initialise OAuth state storage singleton (logs which backend was selected)
     OAuthStateStorageFactory.create()

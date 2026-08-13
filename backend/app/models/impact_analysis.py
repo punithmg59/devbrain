@@ -3,10 +3,9 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 
 from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, Text, func, text
-from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.database import Base
+from app.database import Base, DialectJSON, DialectUUID
 
 if TYPE_CHECKING:
     from app.models.repo import Repo
@@ -16,12 +15,12 @@ class ImpactAnalysis(Base):
     __tablename__ = "impact_analyses"
 
     id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+        DialectUUID(),
         primary_key=True,
-        server_default=text("gen_random_uuid()"),
+        default=uuid.uuid4,
     )
     repo_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+        DialectUUID(),
         ForeignKey("repos.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
@@ -34,8 +33,8 @@ class ImpactAnalysis(Base):
     blast_radius: Mapped[int] = mapped_column(Integer, nullable=False)
     affected_count: Mapped[int] = mapped_column(Integer, nullable=False)
     effort_label: Mapped[str | None] = mapped_column(String(100), nullable=True)
-    recommendations: Mapped[list[dict]] = mapped_column(JSONB, default=list, server_default="[]")
-    graph_data: Mapped[dict] = mapped_column(JSONB, default=dict, server_default="{}")
+    recommendations: Mapped[list[dict]] = mapped_column(DialectJSON(), default=list, server_default="[]")
+    graph_data: Mapped[dict] = mapped_column(DialectJSON(), default=dict, server_default="{}")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),

@@ -18,8 +18,12 @@ if config.config_file_name is not None:
 
 target_metadata = Base.metadata
 
-# Convert asyncpg URL to psycopg2 format for migrations
-sync_url = settings.database_url.replace("postgresql+asyncpg://", "postgresql://")
+# Convert async URLs to sync format for migrations
+sync_url = settings.database_url
+# Convert PostgreSQL async to sync
+sync_url = sync_url.replace("postgresql+asyncpg://", "postgresql://")
+# Convert SQLite async to sync
+sync_url = sync_url.replace("sqlite+aiosqlite://", "sqlite://")
 config.set_main_option(
     "sqlalchemy.url",
     sync_url.replace("%", "%%"),

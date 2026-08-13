@@ -1,4 +1,4 @@
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from functools import lru_cache
 
 
@@ -26,6 +26,12 @@ class Settings(BaseSettings):
             return self.github_callback_url
         return f"{self.app_url}/api/auth/github/callback"
 
+    # Encryption
+    # Base64-encoded 32-byte encryption key for AES-256-GCM
+    # Generate with: python -c 'import secrets; print(secrets.token_urlsafe(32))'
+    # IMPORTANT: This is development-only. Production should use AWS KMS, Azure Key Vault, etc.
+    encryption_key: str | None = None
+
     # Groq
     groq_api_key: str
 
@@ -42,9 +48,11 @@ class Settings(BaseSettings):
     # Sentry (optional)
     sentry_dsn: str | None = None
 
-    class Config:
-        env_file = ".env"
-        case_sensitive = False
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        case_sensitive=False,
+        extra="ignore"  # Allow extra environment variables
+    )
 
 
 @lru_cache()

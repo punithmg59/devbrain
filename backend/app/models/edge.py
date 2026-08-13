@@ -3,10 +3,9 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 
 from sqlalchemy import DateTime, Float, ForeignKey, String, UniqueConstraint, func, text
-from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.database import Base
+from app.database import Base, DialectUUID
 
 if TYPE_CHECKING:
     from app.models.node import Node
@@ -22,24 +21,24 @@ class Edge(Base):
     )
 
     id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+        DialectUUID(),
         primary_key=True,
-        server_default=text("gen_random_uuid()"),
+        default=uuid.uuid4,
     )
     repo_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+        DialectUUID(),
         ForeignKey("repos.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
     from_node_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+        DialectUUID(),
         ForeignKey("nodes.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
     to_node_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+        DialectUUID(),
         ForeignKey("nodes.id", ondelete="CASCADE"),
         nullable=False,
         index=True,

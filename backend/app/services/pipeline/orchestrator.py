@@ -9,7 +9,7 @@ from uuid import UUID
 from sqlalchemy import select, text, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.database import async_session_factory
+from app.database import async_session_factory, engine
 from app.models.analysis_job import AnalysisJob, TERMINAL
 from app.models.repo import Repo
 from app.models.file import RepoFile
@@ -55,6 +55,19 @@ _running_jobs: set[UUID] = set()
 
 # ── Job claiming ─────────────────────────────────────────────────────────────
 
+def _get_dialect_name() -> str:
+    """Return the current SQLAlchemy dialect name ('sqlite' or 'postgresql')."""
+    return engine.dialect.name
+
+
+def _stale_heartbeat_expr(dialect: str) -> str:
+    """Return SQL fragment for 'heartbeat is stale' appropriate for the dialect."""
+    if dialect == "sqlite":
+        return f"heartbeat_at < datetime('now', '-{HEARTBEAT_STALE_SECONDS} seconds')"
+    # PostgreSQL
+    return f"heartbeat_at < NOW() - INTERVAL '{HEARTBEAT_STALE_SECONDS} seconds'"
+
+
 async def _claim_next_job() -> tuple[UUID | None, str | None]:
     """Atomically claim the next eligible job from the queue.
 
@@ -63,65 +76,150 @@ async def _claim_next_job() -> tuple[UUID | None, str | None]:
     - status is non-terminal AND heartbeat is stale (dead worker recovery)
 
     Jobs already running in this process (_running_jobs) are excluded.
+
+    Implementation is dialect-aware:
+    - PostgreSQL: SELECT ... FOR UPDATE SKIP LOCKED + UPDATE (original strategy)
+    - SQLite:     SELECT + conditional UPDATE in one transaction (no FOR UPDATE)
     """
+    dialect = _get_dialect_name()
+
     async with async_session_factory() as db:
         # Build exclusion list from in-process running jobs.
-        # PostgreSQL requires a non-empty IN list, so use a nil UUID sentinel.
+        # Use a nil UUID sentinel when the set is empty (avoids empty IN list).
         exclude_ids = list(_running_jobs) if _running_jobs else [
             UUID("00000000-0000-0000-0000-000000000000")
         ]
         exclude_strs = [str(uid) for uid in exclude_ids]
 
         from sqlalchemy import bindparam
-        candidate = (await db.execute(
-            text("""
-                SELECT id, status, heartbeat_at, created_at, worker_id
-                FROM analysis_jobs
-                WHERE id NOT IN :exclude_ids
-                AND (
-                    status = 'queued'
-                    OR (
-                        status NOT IN ('completed', 'completed_with_warnings', 'failed')
-                        AND (
-                            heartbeat_at IS NULL
-                            OR heartbeat_at < now() - interval '90 seconds'
+        stale_expr = _stale_heartbeat_expr(dialect)
+
+        if dialect == "postgresql":
+            # ── PostgreSQL: use FOR UPDATE SKIP LOCKED for true row-level locking ──
+            candidate = (await db.execute(
+                text(f"""
+                    SELECT id, status, heartbeat_at, created_at, worker_id
+                    FROM analysis_jobs
+                    WHERE id NOT IN :exclude_ids
+                    AND (
+                        status = 'queued'
+                        OR (
+                            status NOT IN ('completed', 'completed_with_warnings', 'failed')
+                            AND (
+                                heartbeat_at IS NULL
+                                OR {stale_expr}
+                            )
                         )
                     )
-                )
-                ORDER BY created_at ASC
-                LIMIT 1
-                FOR UPDATE SKIP LOCKED
-            """).bindparams(bindparam("exclude_ids", expanding=True)),
-            {"exclude_ids": exclude_strs},
-        )).first()
+                    ORDER BY created_at ASC
+                    LIMIT 1
+                    FOR UPDATE SKIP LOCKED
+                """).bindparams(bindparam("exclude_ids", expanding=True)),
+                {"exclude_ids": exclude_strs},
+            )).first()
 
-        if not candidate:
-            return None, None
+            if not candidate:
+                return None, None
 
-        cand_id = candidate[0]
-        cand_status = candidate[1]
+            cand_id = candidate[0]
+            cand_status = candidate[1]
+            match_reason = (
+                "status='queued'" if cand_status == "queued" else "stale_heartbeat"
+            )
 
-        match_reason = (
-            "status='queued'" if cand_status == "queued" else "stale_heartbeat"
-        )
+            logger.info(
+                "Claiming job %s (reason: %s, prior_status: %s)",
+                cand_id, match_reason, cand_status,
+            )
 
-        logger.info(
-            "Claiming job %s (reason: %s, prior_status: %s)",
-            cand_id, match_reason, cand_status,
-        )
+            result = await db.execute(text("""
+                UPDATE analysis_jobs
+                SET    status       = 'cloning',
+                       worker_id   = :worker_id,
+                       heartbeat_at = NOW(),
+                       started_at  = COALESCE(started_at, NOW())
+                WHERE  id = :job_id
+                RETURNING id
+            """), {"worker_id": WORKER_ID, "job_id": cand_id})
+            await db.commit()
+            row = result.first()
+            return (UUID(str(row[0])), match_reason) if row else (None, None)
 
-        result = await db.execute(text("""
-            UPDATE analysis_jobs
-            SET    status       = 'cloning',
-                   worker_id   = :worker_id,
-                   heartbeat_at = now(),
-                   started_at  = COALESCE(started_at, now())
-            WHERE  id = :job_id
-            RETURNING id
-        """), {"worker_id": WORKER_ID, "job_id": cand_id})
-        await db.commit()
-        row = result.first()
-        return (row[0], match_reason) if row else (None, None)
+        else:
+            # ── SQLite: atomic conditional UPDATE (no FOR UPDATE SKIP LOCKED) ──
+            # Strategy:
+            #   1. SELECT candidate without lock.
+            #   2. Immediately attempt conditional UPDATE WHERE status still matches.
+            #   3. Only one concurrent transaction can succeed; the other gets 0 rows.
+            # This is safe because SQLite uses file-level write locking — only one
+            # writer can hold the write lock at a time, making step 2 atomic.
+
+            candidate = (await db.execute(
+                text(f"""
+                    SELECT id, status, heartbeat_at, created_at, worker_id
+                    FROM analysis_jobs
+                    WHERE id NOT IN :exclude_ids
+                    AND (
+                        status = 'queued'
+                        OR (
+                            status NOT IN ('completed', 'completed_with_warnings', 'failed')
+                            AND (
+                                heartbeat_at IS NULL
+                                OR {stale_expr}
+                            )
+                        )
+                    )
+                    ORDER BY created_at ASC
+                    LIMIT 1
+                """).bindparams(bindparam("exclude_ids", expanding=True)),
+                {"exclude_ids": exclude_strs},
+            )).first()
+
+            if not candidate:
+                return None, None
+
+            cand_id = candidate[0]
+            cand_status = candidate[1]
+            match_reason = (
+                "status='queued'" if cand_status == "queued" else "stale_heartbeat"
+            )
+
+            logger.info(
+                "Claiming job %s (reason: %s, prior_status: %s)",
+                cand_id, match_reason, cand_status,
+            )
+
+            # Atomic conditional UPDATE: only succeeds if the job is still in
+            # the claimable state we found above. A concurrent worker that
+            # already claimed it will have changed the status, so our WHERE
+            # condition will not match and rowcount will be 0.
+            now_str = "datetime('now')"
+            if cand_status == "queued":
+                where_clause = "status = 'queued'"
+            else:
+                # Stale reclaim: job must still be non-terminal AND still stale
+                where_clause = f"""
+                    status NOT IN ('completed', 'completed_with_warnings', 'failed', 'cloning', 'queued')
+                    AND (heartbeat_at IS NULL OR {stale_expr})
+                """
+
+            result = await db.execute(text(f"""
+                UPDATE analysis_jobs
+                SET    status       = 'cloning',
+                       worker_id   = :worker_id,
+                       heartbeat_at = {now_str},
+                       started_at  = COALESCE(started_at, {now_str})
+                WHERE  id = :job_id
+                AND    ({where_clause})
+            """), {"worker_id": WORKER_ID, "job_id": str(cand_id)})
+            await db.commit()
+
+            if result.rowcount == 0:
+                # Another worker claimed this job between our SELECT and UPDATE.
+                logger.debug("Job %s already claimed by another worker — skipping", cand_id)
+                return None, None
+
+            return (UUID(str(cand_id)), match_reason)
 
 
 # ── Heartbeat keepalive ──────────────────────────────────────────────────────
@@ -131,7 +229,11 @@ async def _heartbeat_keepalive(job_id: UUID, stop: asyncio.Event) -> None:
 
     Runs alongside the analysis so the heartbeat never goes stale while
     the worker is alive and actively processing. Exits when stop is set.
+    Uses dialect-appropriate SQL for the timestamp update.
     """
+    dialect = _get_dialect_name()
+    now_expr = "datetime('now')" if dialect == "sqlite" else "NOW()"
+
     while not stop.is_set():
         try:
             await asyncio.wait_for(stop.wait(), timeout=_HEARTBEAT_INTERVAL)
@@ -143,11 +245,11 @@ async def _heartbeat_keepalive(job_id: UUID, stop: asyncio.Event) -> None:
 
         try:
             async with async_session_factory() as db:
-                await db.execute(text("""
+                await db.execute(text(f"""
                     UPDATE analysis_jobs
-                    SET heartbeat_at = now()
+                    SET heartbeat_at = {now_expr}
                     WHERE id = :job_id
-                """), {"job_id": job_id})
+                """), {"job_id": str(job_id)})
                 await db.commit()
         except Exception as exc:
             # Heartbeat refresh failure is non-fatal; log and continue.

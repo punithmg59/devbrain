@@ -26,13 +26,12 @@ from app.services.workflow_discovery_service import WorkflowDiscoveryService
 from app.services.critical_path_service import CriticalPathService
 from app.services.impact_precompute_service import ImpactPrecomputeService
 from models.parser import ParserResult, ParserMetadata, ParserLanguage, ParserStatus
-from sqlalchemy.ext.compiler import compiles
-from sqlalchemy.sql.elements import TextClause
-
-@compiles(TextClause, "sqlite")
-def compile_text_sqlite(element, compiler, **kw):
-    s = compiler.process(element, **kw)
-    return s.replace("gen_random_uuid()", "(lower(hex(randomblob(16))))")
+# NOTE: No @compiles(TextClause, "sqlite") hook here.
+# The previous implementation called compiler.process(element, **kw) which
+# re-invoked the same hook, causing infinite recursion and globally corrupting
+# SQLAlchemy's compiler state for all subsequent tests in the same process.
+# gen_random_uuid() is a PostgreSQL-only function; it is never issued against
+# SQLite because the DialectUUID type uses Uuid() on SQLite (not gen_random_uuid).
 
 
 @pytest.mark.asyncio

@@ -5,10 +5,9 @@ from datetime import datetime
 from typing import Any
 
 from sqlalchemy import DateTime, Float, ForeignKey, Text, UniqueConstraint, text
-from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.database import Base
+from app.database import Base, DialectJSON, DialectUUID
 
 
 class RiskProfile(Base):
@@ -18,24 +17,24 @@ class RiskProfile(Base):
     )
 
     id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+        DialectUUID(),
         primary_key=True,
-        server_default=text("gen_random_uuid()"),
+        default=uuid.uuid4,
     )
     repo_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+        DialectUUID(),
         ForeignKey("repos.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
     entity_type: Mapped[str] = mapped_column(Text, nullable=False)
     entity_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+        DialectUUID(),
         nullable=False,
     )
     risk_score: Mapped[float] = mapped_column(Float, server_default="0.0", nullable=False)
     risk_category: Mapped[str] = mapped_column(Text, server_default="safe", nullable=False)
-    risk_factors: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    risk_factors: Mapped[dict[str, Any]] = mapped_column(DialectJSON(), nullable=False)
     confidence: Mapped[float] = mapped_column(Float, server_default="0.0", nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=text("now()"), nullable=False
@@ -49,24 +48,24 @@ class RiskBreakdown(Base):
     __tablename__ = "risk_breakdowns"
 
     id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+        DialectUUID(),
         primary_key=True,
-        server_default=text("gen_random_uuid()"),
+        default=uuid.uuid4,
     )
     repo_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+        DialectUUID(),
         ForeignKey("repos.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
     entity_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+        DialectUUID(),
         nullable=False,
     )
     factor_name: Mapped[str] = mapped_column(Text, nullable=False)
     factor_score: Mapped[float] = mapped_column(Float, server_default="0.0", nullable=False)
     weight: Mapped[float] = mapped_column(Float, server_default="0.0", nullable=False)
-    evidence: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    evidence: Mapped[dict[str, Any]] = mapped_column(DialectJSON(), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=text("now()"),
@@ -78,18 +77,18 @@ class RiskHistory(Base):
     __tablename__ = "risk_history"
 
     id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+        DialectUUID(),
         primary_key=True,
-        server_default=text("gen_random_uuid()"),
+        default=uuid.uuid4,
     )
     repo_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+        DialectUUID(),
         ForeignKey("repos.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
     entity_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+        DialectUUID(),
         nullable=False,
     )
     previous_score: Mapped[float] = mapped_column(Float, server_default="0.0", nullable=False)

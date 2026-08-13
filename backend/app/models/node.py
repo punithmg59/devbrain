@@ -14,10 +14,9 @@ from sqlalchemy import (
     func,
     text,
 )
-from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.database import Base
+from app.database import Base, DialectArray, DialectJSON, DialectUUID
 
 if TYPE_CHECKING:
     from app.models.edge import Edge
@@ -30,18 +29,18 @@ class Node(Base):
     __table_args__ = (UniqueConstraint("repo_id", "full_path", name="uq_nodes_repo_id_full_path"),)
 
     id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+        DialectUUID(),
         primary_key=True,
-        server_default=text("gen_random_uuid()"),
+        default=uuid.uuid4,
     )
     repo_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+        DialectUUID(),
         ForeignKey("repos.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
     file_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True),
+        DialectUUID(),
         ForeignKey("repo_files.id"),
         nullable=True,
         index=True,
@@ -52,10 +51,11 @@ class Node(Base):
     start_line: Mapped[int | None] = mapped_column(Integer, nullable=True)
     end_line: Mapped[int | None] = mapped_column(Integer, nullable=True)
     raw_code: Mapped[str | None] = mapped_column(Text, nullable=True)
+    raw_code_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
     signature: Mapped[str | None] = mapped_column(String(1000), nullable=True)
-    calls: Mapped[list[str]] = mapped_column(ARRAY(String), default=list, server_default="{}")
-    called_by: Mapped[list[str]] = mapped_column(ARRAY(String), default=list, server_default="{}")
-    imports: Mapped[list[str]] = mapped_column(ARRAY(String), default=list, server_default="{}")
+    calls: Mapped[list[str]] = mapped_column(DialectArray(), default=list, server_default="[]")
+    called_by: Mapped[list[str]] = mapped_column(DialectArray(), default=list, server_default="[]")
+    imports: Mapped[list[str]] = mapped_column(DialectArray(), default=list, server_default="[]")
     http_method: Mapped[str | None] = mapped_column(String(10), nullable=True)
     route_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
     summary: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -63,9 +63,9 @@ class Node(Base):
     architecture_role: Mapped[str | None] = mapped_column(String(255), nullable=True)
     complexity_level: Mapped[str | None] = mapped_column(String(20), nullable=True)
     call_flow_diagram: Mapped[str | None] = mapped_column(Text, nullable=True)
-    ai_tags: Mapped[list[str]] = mapped_column(JSONB, default=list, server_default="[]")
-    potential_risks: Mapped[list[str]] = mapped_column(JSONB, default=list, server_default="[]")
-    tags: Mapped[list[str]] = mapped_column(ARRAY(String), default=list, server_default="{}")
+    ai_tags: Mapped[list[str]] = mapped_column(DialectJSON(), default=list, server_default="[]")
+    potential_risks: Mapped[list[str]] = mapped_column(DialectJSON(), default=list, server_default="[]")
+    tags: Mapped[list[str]] = mapped_column(DialectArray(), default=list, server_default="[]")
     is_exported: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     is_async: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     complexity_score: Mapped[float] = mapped_column(Float, default=0.0, server_default="0.0")
