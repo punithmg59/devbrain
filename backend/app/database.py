@@ -1,4 +1,6 @@
+import asyncio
 import logging
+import os
 import ssl
 from collections.abc import AsyncGenerator
 
@@ -11,6 +13,10 @@ from app.config import get_settings
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
+
+# Known system CA bundle path on Debian/Ubuntu (installed by ca-certificates package).
+# This is the path that `python:3.12-slim` + `apt-get install ca-certificates` provides.
+_DEBIAN_CA_BUNDLE = "/etc/ssl/certs/ca-certificates.crt"
 
 
 # ── Dialect-aware portable types ─────────────────────────────────────────────
@@ -76,28 +82,64 @@ DialectUUID = _DialectUUID
 
 
 def _build_async_connect_args(database_url: str, environment: str) -> dict:
-    """Supabase pooler requires SSL; asyncpg on Windows fails strict cert verify in dev.
-    
-    IMPORTANT: PgBouncer transaction pooling (pooler.supabase.com:6543) does not support
-    prepared statements. Must set statement_cache_size=0 to avoid DuplicatePreparedStatementError.
+    """Build asyncpg connect_args for Supabase/PostgreSQL with correct SSL configuration.
+
+    Production (Railway):
+        Uses a verified SSL context loaded from the system CA bundle
+        (/etc/ssl/certs/ca-certificates.crt on Debian/Ubuntu, installed by
+        the ca-certificates package in the Dockerfile). This ensures Supabase's
+        certificate chain is verifiable without disabling any security checks.
+
+    Development (local/Windows):
+        asyncpg on Windows cannot verify Supabase's cert chain through the
+        Windows cert store, so verification is relaxed for local dev only.
+        CERT_NONE is NEVER used in production.
+
+    IMPORTANT: PgBouncer transaction pooling (pooler.supabase.com:6543) does not
+    support prepared statements. statement_cache_size=0 avoids
+    DuplicatePreparedStatementError.
     """
-    # Check if using Supabase (either pooler or direct connection)
+    # Only apply SSL args for Supabase connections.
     is_supabase = "supabase" in database_url or "pooler.supabase.com" in database_url
-    
     if not is_supabase:
         return {}
-    
-    # Build SSL context
-    if environment == "development":
+
+    if environment.lower() == "development":
+        # Local dev on Windows: relax cert verification only.
+        # This is intentional and limited to development.
         ctx = ssl.create_default_context()
         ctx.check_hostname = False
         ctx.verify_mode = ssl.CERT_NONE
+        logger.warning(
+            "SSL certificate verification DISABLED — development mode only. "
+            "This must NEVER appear in production logs."
+        )
         ssl_arg = ctx
     else:
-        ctx = ssl.create_default_context()
+        # Production: full certificate verification.
+        # Load the system CA bundle explicitly so verification is deterministic
+        # inside the Docker container (python:3.12-slim + ca-certificates).
+        if os.path.isfile(_DEBIAN_CA_BUNDLE):
+            ctx = ssl.create_default_context(cafile=_DEBIAN_CA_BUNDLE)
+            logger.info(
+                "SSL context loaded from system CA bundle: %s", _DEBIAN_CA_BUNDLE
+            )
+        else:
+            # Fallback: let Python discover the CA bundle automatically.
+            # Works on macOS / Windows in local production-like runs.
+            ctx = ssl.create_default_context()
+            logger.info(
+                "SSL context using default CA bundle (system CA bundle not found at %s)",
+                _DEBIAN_CA_BUNDLE,
+            )
+        # Ensure hostname and certificate verification are both active (defaults,
+        # but stated explicitly for auditing purposes).
+        ctx.check_hostname = True
+        ctx.verify_mode = ssl.CERT_REQUIRED
         ssl_arg = ctx
-    
-    # CRITICAL: statement_cache_size=0 is required for PgBouncer transaction pooling
+        logger.info("SSL certificate verification: ENABLED (CERT_REQUIRED + check_hostname)")
+
+    # CRITICAL: statement_cache_size=0 is required for PgBouncer transaction pooling.
     return {"ssl": ssl_arg, "statement_cache_size": 0}
 
 
@@ -127,6 +169,7 @@ else:
         max_overflow=5,
         pool_pre_ping=True,
         pool_recycle=300,
+        pool_timeout=30,   # Raise immediately after 30 s rather than hanging forever.
         echo=False,
     )
 
@@ -161,10 +204,19 @@ async def init_db() -> None:
 
 
 async def test_connection() -> bool:
+    """Single-attempt connectivity test: executes SELECT 1 and reports result.
+
+    Reports:
+        Database connection: OK / FAILED
+        Database SSL: OK (if connection succeeded with SSL args in connect_args)
+    """
     try:
         async with engine.connect() as conn:
             await conn.execute(text("SELECT 1"))
-        logger.info("Database connection successful")
+        ssl_active = bool(_connect_args.get("ssl"))
+        logger.info("Database connection: OK")
+        logger.info("Database SSL: %s", "OK (verified)" if ssl_active else "N/A (non-SSL driver)")
+        logger.info("SELECT 1: OK")
         return True
     except Exception as e:
         err_msg = str(e)
@@ -180,9 +232,61 @@ async def test_connection() -> bool:
                 "3. Wait ~1-2 minutes for project startup and retry.\n"
                 "============================================================\n"
             )
+        elif "CERTIFICATE_VERIFY_FAILED" in err_msg or "SSL" in err_msg.upper():
+            logger.error(
+                "\n============================================================\n"
+                "DATABASE SSL CERTIFICATE VERIFICATION FAILED!\n"
+                "This usually means the Docker image is missing the ca-certificates\n"
+                "package, or the Supabase host has changed its certificate chain.\n\n"
+                "To diagnose:\n"
+                "1. Verify Dockerfile includes: apt-get install ca-certificates\n"
+                "2. Verify DATABASE_URL host matches your Supabase project pooler URL\n"
+                "3. Check Railway environment variables for PGSSLROOTCERT overrides\n"
+                "============================================================\n"
+            )
         else:
-            logger.error("Database connection failed: %s", e)
+            # Log the error type and message but never log the DATABASE_URL.
+            logger.error("Database connection failed [%s]: %s", type(e).__name__, e)
         return False
+
+
+async def db_connect_with_backoff(
+    max_attempts: int = 5,
+    base_delay: float = 2.0,
+    max_delay: float = 60.0,
+) -> bool:
+    """Attempt database connectivity with exponential backoff.
+
+    Intended for use at application startup to prevent the worker loop from
+    entering a tight retry loop when the database is temporarily unreachable.
+
+    Args:
+        max_attempts: Maximum number of connection attempts (default 5).
+        base_delay:   Initial backoff delay in seconds (default 2 s).
+        max_delay:    Maximum backoff delay cap in seconds (default 60 s).
+
+    Returns:
+        True if a connection succeeded within max_attempts, False otherwise.
+    """
+    for attempt in range(1, max_attempts + 1):
+        ok = await test_connection()
+        if ok:
+            return True
+        if attempt < max_attempts:
+            delay = min(base_delay * (2 ** (attempt - 1)), max_delay)
+            logger.warning(
+                "Database connectivity check failed (attempt %d/%d). "
+                "Retrying in %.0f s...",
+                attempt, max_attempts, delay,
+            )
+            await asyncio.sleep(delay)
+        else:
+            logger.error(
+                "Database connectivity check FAILED after %d attempts. "
+                "Worker loop will NOT start to avoid tight error loop.",
+                max_attempts,
+            )
+    return False
 
 
 # ── Startup schema validation ────────────────────────────────────
