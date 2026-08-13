@@ -5,6 +5,10 @@ const API = axios.create({
   withCredentials: true,
 });
 
+if (typeof window !== "undefined") {
+  console.log("[AuthService] API client initialized. withCredentials:", API.defaults.withCredentials, "baseURL:", import.meta.env.VITE_API_URL);
+}
+
 export const authService = {
   loginWithGitHub: () => {
     window.location.href = `${import.meta.env.VITE_API_URL}/api/auth/github`;
