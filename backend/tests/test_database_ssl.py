@@ -274,7 +274,7 @@ def test_log_db_connection_info_logs_host_port_ssl(caplog):
     assert "5432" in caplog.text
     assert "Production" in caplog.text
     # SSL enabled flag should appear.
-    assert "SSL enabled: True" in caplog.text
+    assert "SSL Enabled: True" in caplog.text
     # CERT_REQUIRED should be indicated.
     assert "CERT_REQUIRED" in caplog.text
     # Password must not appear.

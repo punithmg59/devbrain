@@ -88,27 +88,24 @@ def _build_ssl_context(
     ca_cert_path: str | None = None,
     ca_cert_inline: str | None = None,
 ) -> ssl.SSLContext | None:
-    """Build and return an ssl.SSLContext for asyncpg, or None for non-SSL drivers.
+    """Build and return an ssl.SSLContext for asyncpg.
 
-    CA Certificate resolution order (production only):
-      1. DATABASE_SSL_CA_CERT_PATH  — path to a PEM file on disk (highest priority)
-      2. DATABASE_SSL_CA_CERT       — inline PEM content written to a temp file
-      3. Debian system CA bundle    — /etc/ssl/certs/ca-certificates.crt (Docker)
-      4. Python default CA bundle   — auto-discovered by ssl module (fallback)
+    CA Certificate loading order (production):
+      1. Initialize context with ssl.create_default_context() to load default system CAs (145+ CAs).
+      2. Call ctx.load_verify_locations() to augment system CAs with:
+         a) DATABASE_SSL_CA_CERT_PATH (path to a PEM file on disk, e.g. /app/certs/prod-ca-cert.pem)
+         b) DATABASE_SSL_CA_CERT      (inline PEM content)
 
     Development:
-      Hostname verification is relaxed (CERT_NONE) for Windows environments
-      where asyncpg cannot verify Supabase's cert chain through the OS cert store.
+      Hostname verification is relaxed (CERT_NONE) only for environment == 'development'.
       CERT_NONE is NEVER used in production.
 
     Returns:
-        ssl.SSLContext — always returned (either verified or relaxed for dev)
+        ssl.SSLContext — always returned with CERT_REQUIRED and check_hostname=True in production.
     """
     is_dev = environment.lower() == "development"
 
     if is_dev:
-        # Local dev: relax cert verification so developers on Windows can connect.
-        # This is intentional and must NEVER appear in production.
         ctx = ssl.create_default_context()
         ctx.check_hostname = False
         ctx.verify_mode = ssl.CERT_NONE
@@ -119,10 +116,11 @@ def _build_ssl_context(
         return ctx
 
     # ── Production: full certificate verification ─────────────────────────────
-    # Determine which CA file to use, in priority order.
+    # Create default SSLContext which loads all default system root CAs first
+    ctx = ssl.create_default_context()
+
     _tmp_file = None  # keep reference to prevent GC of NamedTemporaryFile
-    ca_file: str | None = None
-    ca_source: str = "unknown"
+    ca_source = "system default CAs"
 
     try:
         if ca_cert_path:
@@ -132,68 +130,50 @@ def _build_ssl_context(
                     f"DATABASE_SSL_CA_CERT_PATH points to a non-existent file: {ca_cert_path!r}. "
                     "Download the Supabase CA cert from Dashboard → Database → SSL."
                 )
-            ca_file = ca_cert_path
+            ctx.load_verify_locations(cafile=ca_cert_path)
             ca_source = f"DATABASE_SSL_CA_CERT_PATH ({ca_cert_path})"
-            logger.info("[DB-SSL] Using Supabase CA certificate from path: %s", ca_cert_path)
+            logger.info("[DB-SSL] Loaded custom CA certificate from path: %s", ca_cert_path)
 
         elif ca_cert_inline:
             # Priority 2: inline PEM from DATABASE_SSL_CA_CERT env var.
-            # Railway stores secrets as env vars; this avoids filesystem concerns.
-            # Normalise escaped newlines that shells/Railway may encode as literal \n.
             pem_content = ca_cert_inline.replace("\\n", "\n")
             if not pem_content.strip().startswith("-----BEGIN"):
                 raise ValueError(
                     "DATABASE_SSL_CA_CERT does not look like a valid PEM certificate. "
                     "Ensure it starts with '-----BEGIN CERTIFICATE-----'."
                 )
-            # Write to a temporary file so ssl.create_default_context(cafile=) can load it.
-            # We keep _tmp_file alive for the lifetime of this function; the returned ctx
-            # holds the loaded cert in memory, so the file can be deleted after load.
             with tempfile.NamedTemporaryFile(
                 mode="w", suffix=".pem", delete=False, prefix="supabase_ca_"
             ) as tmp:
                 tmp.write(pem_content)
                 _tmp_file = tmp.name
-            ca_file = _tmp_file
+            ctx.load_verify_locations(cafile=_tmp_file)
             ca_source = "DATABASE_SSL_CA_CERT (inline env var)"
-            logger.info("[DB-SSL] Using Supabase CA certificate from inline DATABASE_SSL_CA_CERT")
+            logger.info("[DB-SSL] Loaded custom CA certificate from inline DATABASE_SSL_CA_CERT")
 
         elif os.path.isfile(_DEBIAN_CA_BUNDLE):
-            # Priority 3: Debian system CA bundle (docker image with ca-certificates installed).
-            ca_file = _DEBIAN_CA_BUNDLE
-            ca_source = f"system CA bundle ({_DEBIAN_CA_BUNDLE})"
-            logger.info("[DB-SSL] Using system CA bundle: %s", _DEBIAN_CA_BUNDLE)
+            # Priority 3: Debian system CA bundle
+            try:
+                ctx.load_verify_locations(cafile=_DEBIAN_CA_BUNDLE)
+                ca_source = f"system CA bundle ({_DEBIAN_CA_BUNDLE})"
+            except Exception:
+                pass
 
-        else:
-            # Priority 4: Python auto-discovers the platform CA bundle.
-            # Works on macOS / CI. On Linux without ca-certificates this may fail.
-            ca_file = None
-            ca_source = "Python default CA bundle (auto-discovered)"
-            logger.warning(
-                "[DB-SSL] No explicit CA certificate configured and system CA bundle not found at %s. "
-                "Falling back to Python default CA bundle. "
-                "Set DATABASE_SSL_CA_CERT_PATH or install ca-certificates to ensure "
-                "Supabase certificate verification succeeds.",
-                _DEBIAN_CA_BUNDLE,
-            )
-
-        ctx = ssl.create_default_context(cafile=ca_file)
-        # Explicitly assert both checks are active — defaults, but stated for auditability.
+        # Explicitly assert both checks are active
         ctx.check_hostname = True
         ctx.verify_mode = ssl.CERT_REQUIRED
         logger.info(
-            "[DB-SSL] SSL context ready: CERT_REQUIRED + check_hostname=True. CA source: %s",
+            "[DB-SSL] SSLContext ready: CERT_REQUIRED + check_hostname=True. Trust store source: %s",
             ca_source,
         )
         return ctx
 
     finally:
-        # Clean up the temporary file if we wrote one (cert is now loaded in ctx).
         if _tmp_file and os.path.exists(_tmp_file):
             try:
                 os.unlink(_tmp_file)
             except OSError:
-                pass  # Non-fatal; temp files are cleaned up at process exit anyway.
+                pass
 
 
 def _build_async_connect_args(
@@ -202,38 +182,29 @@ def _build_async_connect_args(
     ca_cert_path: str | None = None,
     ca_cert_inline: str | None = None,
 ) -> dict:
-    """Build asyncpg connect_args dict for a Supabase/PostgreSQL connection.
+    """Build asyncpg connect_args dict for any PostgreSQL connection.
 
-    For non-Supabase URLs (e.g. local PostgreSQL, SQLite) returns {}.
-
-    Args:
-        database_url:   The full database URL (credentials not logged).
-        environment:    'development' relaxes cert verification; anything else is production.
-        ca_cert_path:   Path to Supabase CA PEM file (DATABASE_SSL_CA_CERT_PATH).
-        ca_cert_inline: Inline PEM content           (DATABASE_SSL_CA_CERT).
+    Applies to all PostgreSQL database URLs (postgresql://, postgres://, etc.).
+    For non-PostgreSQL / SQLite URLs returns {}.
 
     IMPORTANT: PgBouncer/Supavisor transaction pooling (port 6543) does not support
     prepared statements. statement_cache_size=0 avoids DuplicatePreparedStatementError.
     """
-    is_supabase = "supabase" in database_url or "pooler.supabase.com" in database_url
+    is_supabase = (
+        "supabase" in database_url
+        or "pooler.supabase.com" in database_url
+        or ca_cert_path is not None
+        or ca_cert_inline is not None
+    )
     if not is_supabase:
         return {}
 
     ssl_ctx = _build_ssl_context(environment, ca_cert_path, ca_cert_inline)
-    # CRITICAL: statement_cache_size=0 is required for PgBouncer/Supavisor transaction pooling.
     return {"ssl": ssl_ctx, "statement_cache_size": 0}
 
 
 def log_db_connection_info(database_url: str, connect_args: dict, environment: str) -> None:
-    """Log safe connection diagnostics — never logs credentials or certificate contents.
-
-    Logged fields:
-        - database host
-        - database port
-        - SSL enabled
-        - CA certificate configured
-        - environment
-    """
+    """Log safe connection diagnostics — never logs credentials or certificate contents."""
     try:
         parsed = urlparse(database_url)
         host = parsed.hostname or "(unknown)"
@@ -244,21 +215,31 @@ def log_db_connection_info(database_url: str, connect_args: dict, environment: s
 
     ssl_arg = connect_args.get("ssl")
     ssl_enabled = ssl_arg is not None
-    ca_configured: str
+
+    ca_path = settings.database_ssl_ca_cert_path or "(not set)"
+    ca_exists = os.path.isfile(settings.database_ssl_ca_cert_path) if settings.database_ssl_ca_cert_path else False
+    ca_size = os.path.getsize(settings.database_ssl_ca_cert_path) if ca_exists else "N/A"
+
+    verify_mode_str = "N/A"
+    check_hostname_str = "N/A"
     if isinstance(ssl_arg, ssl.SSLContext):
-        ca_configured = (
-            "YES (CERT_REQUIRED)" if ssl_arg.verify_mode == ssl.CERT_REQUIRED
-            else "relaxed (CERT_NONE — dev mode)"
-        )
-    elif ssl_enabled:
-        ca_configured = "YES (raw bool)"
-    else:
-        ca_configured = "N/A"
+        verify_mode_str = "CERT_REQUIRED" if ssl_arg.verify_mode == ssl.CERT_REQUIRED else "CERT_NONE (dev)"
+        check_hostname_str = str(ssl_arg.check_hostname)
+
+    # Check for potential interfering SSL environment variables
+    env_vars = {
+        var: os.environ.get(var) for var in ["PGSSLROOTCERT", "SSL_CERT_FILE", "SSL_CERT_DIR"]
+        if var in os.environ
+    }
+    interfering_str = ", ".join(f"{k}={v}" for k, v in env_vars.items()) if env_vars else "none"
 
     logger.info(
-        "[DB] Connection info — host: %s | port: %s | SSL enabled: %s | "
-        "CA certificate: %s | environment: %s",
-        host, port, ssl_enabled, ca_configured, environment,
+        "[DB-DIAGNOSTICS] Host: %s | Port: %s | SSL Enabled: %s | VerifyMode: %s | "
+        "CheckHostname: %s | CA Path: %s | CA Exists: %s | CA Size: %s | "
+        "Environment: %s | SSL Env Vars: %s",
+        host, port, ssl_enabled, verify_mode_str, check_hostname_str,
+        ca_path, ca_exists, f"{ca_size} bytes" if isinstance(ca_size, int) else ca_size,
+        environment, interfering_str,
     )
 
 
