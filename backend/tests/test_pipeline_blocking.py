@@ -18,7 +18,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 import pytest_asyncio
-from sqlalchemy import text
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 
@@ -344,3 +344,116 @@ async def test_worker_poll_log_throttled():
     # Exactly 1 poll log for _POLL_LOG_INTERVAL cycles
     assert len(emitted_poll_logs) == 1, \
         f"Expected 1 worker_poll log per {interval} cycles, got {len(emitted_poll_logs)}"
+
+
+# ── Test 6: Full Trigger -> Queue -> Worker Claim -> Clone Started ─────────
+
+
+@pytest.mark.asyncio
+async def test_analyze_endpoint_to_worker_pipeline(sqlite_factory, caplog):
+    """
+    Verify complete flow:
+    1. POST /api/repos/{repo_id}/analyze creates a queued AnalysisJob.
+    2. _claim_next_job() claims it and transitions status to 'cloning'.
+    3. worker_loop / run_pipeline starts and logs [ANALYSIS] pipeline_started and [ANALYSIS] clone_started.
+    """
+    engine, factory = sqlite_factory
+    import app.routers.analysis as router_mod
+    import app.services.pipeline.orchestrator as orch_mod
+    import app.services.analysis as analysis_mod
+    from app.models import Repo, User, AnalysisJob
+
+    user_id = uuid.uuid4()
+    repo_id = uuid.uuid4()
+
+    # Create user and repo in DB
+    async with factory() as db:
+        user = User(
+            id=user_id,
+            github_id="12345",
+            username="testuser",
+            email="test@example.com",
+            github_access_token="test_token",
+        )
+        repo = Repo(
+            id=repo_id,
+            user_id=user_id,
+            github_repo_id=99999,
+            full_name="testowner/testrepo",
+            name="testrepo",
+            default_branch="main",
+            analysis_status="pending",
+        )
+        db.add_all([user, repo])
+        await db.commit()
+    with patch.object(_db_module, "engine", engine), \
+         patch.object(_db_module, "async_session_factory", factory), \
+         patch.object(orch_mod, "async_session_factory", factory), \
+         patch.object(orch_mod, "engine", engine), \
+         patch.object(orch_mod, "_get_dialect_name", return_value="sqlite"), \
+         patch("app.services.analysis.get_github_token", AsyncMock(return_value="mock_token")), \
+         patch("app.services.analysis.clone_github_repo", return_value="/tmp/test_clone"), \
+         patch("app.services.analysis._clear_repo_analysis", AsyncMock(return_value=True)), \
+         patch("app.services.analysis.run_v2_analysis_collection") as mock_v2, \
+         patch("app.services.analysis._persist_analysis", AsyncMock(return_value={"total_files": 1, "total_functions": 0, "total_lines": 10})), \
+         patch("app.services.analysis.cleanup_clone"), \
+         caplog.at_level(logging.INFO):
+
+        from app.services.v2_analyzer_adapter import AnalysisPayloadV2
+        payload = AnalysisPayloadV2()
+        payload.total_files = 1
+        payload.total_functions = 0
+        payload.total_lines = 10
+        payload.files = []
+        payload.folders = []
+        payload.nodes = []
+        payload.edges = []
+        payload.failed_files = []
+        mock_v2.return_value = payload
+
+        # 1. Simulate trigger_analysis
+        async with factory() as db:
+            resp = await router_mod.trigger_analysis(
+                repo_id=str(repo_id),
+                current_user=user,
+                db=db,
+            )
+
+        assert resp.status == "queued"
+        assert resp.repo_id == str(repo_id)
+
+        # Query the newly created job
+        async with factory() as db:
+            job = (await db.execute(
+                select(AnalysisJob).where(AnalysisJob.repo_id == repo_id, AnalysisJob.status == "queued")
+            )).scalar_one_or_none()
+            assert job is not None
+            job_id = job.id
+
+        # 2. Worker claims the job
+        orch_mod._running_jobs.clear()
+        claimed_id, reason = await orch_mod._claim_next_job()
+        assert claimed_id == job_id
+        assert reason == "status='queued'"
+
+        # 3. Worker executes run_pipeline
+        await orch_mod.run_pipeline(job_id)
+
+    # 4. Verify DB state after pipeline completion
+    async with factory() as db:
+        updated_job = (await db.execute(select(AnalysisJob).where(AnalysisJob.id == job_id))).scalar_one_or_none()
+        updated_repo = (await db.execute(select(Repo).where(Repo.id == repo_id))).scalar_one_or_none()
+
+    assert updated_job.status in ("completed", "completed_with_warnings")
+    assert updated_repo.analysis_status in ("completed", "completed_with_warnings")
+
+    # 5. Verify [ANALYSIS] logs were emitted in correct sequence
+    all_messages = [r.message for r in caplog.records]
+    assert any("[ANALYSIS] job_created" in m for m in all_messages)
+    assert any("[ANALYSIS] job_claiming" in m or "[ANALYSIS] job_claimed" in m for m in all_messages)
+    assert any("[ANALYSIS] pipeline_started" in m for m in all_messages)
+    assert any("[ANALYSIS] clone_started" in m for m in all_messages)
+    assert any("[ANALYSIS] clone_completed" in m for m in all_messages)
+    assert any("[ANALYSIS] pipeline_completed" in m for m in all_messages)
+
+

@@ -16,7 +16,6 @@ const ACTIVE_STATUSES = new Set([
   "building_graph",
   "saving",
   "analyzing",
-  "pending",
 ]);
 
 function formatStatusLabel(status: string): string {
@@ -46,8 +45,10 @@ function statusStyle(status: string): string {
       return "bg-blue-900/30 text-blue-400 border border-blue-700/30";
     case "failed":
       return "bg-red-900/30 text-red-400 border border-red-700/30";
-    default:
+    case "pending":
       return "bg-yellow-900/30 text-yellow-400 border border-yellow-700/30";
+    default:
+      return "bg-gray-800 text-gray-400 border border-gray-700/30";
   }
 }
 
@@ -130,6 +131,7 @@ export default function DashboardPage() {
   }, [hasActiveAnalysis]);
 
   const handleAnalyze = async (repoId: string) => {
+    console.log(`[ANALYSIS_UI] analyze_clicked repo_id=${repoId}`);
     setAnalyzingIds((prev) => new Set(prev).add(repoId));
     addToast("Starting repository analysis...", "info", 3000);
     try {
@@ -140,7 +142,8 @@ export default function DashboardPage() {
         )
       );
       addToast("Analysis queued successfully", "success", 3000);
-    } catch {
+    } catch (err) {
+      console.error(`[ANALYSIS_UI] handleAnalyze error repo_id=${repoId}:`, err);
       addToast("Failed to queue analysis", "error");
     } finally {
       setAnalyzingIds((prev) => {

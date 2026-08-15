@@ -48,8 +48,15 @@ export const repoService = {
   },
 
   analyze: async (repoId: string): Promise<{ repo_id: string; status: string; message: string }> => {
-    const res = await API.post(`/api/repos/${repoId}/analyze`);
-    return res.data;
+    console.log(`[ANALYSIS_UI] starting_analysis POST /api/repos/${repoId}/analyze`);
+    try {
+      const res = await API.post(`/api/repos/${repoId}/analyze`);
+      console.log(`[ANALYSIS_UI] analysis_response status=${res.status}`, res.data);
+      return res.data;
+    } catch (err) {
+      console.error(`[ANALYSIS_UI] analysis_error repo_id=${repoId}:`, err);
+      throw err;
+    }
   },
 
   getAnalysisStatus: async (repoId: string): Promise<{
