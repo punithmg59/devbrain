@@ -13,9 +13,22 @@ import AuthErrorPage from "./pages/AuthErrorPage";
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const user = useAuthStore((s) => s.user);
   const initialized = useAuthStore((s) => s.initialized);
+  const loading = useAuthStore((s) => s.loading);
 
-  if (!initialized) return null;
-  if (!user) return <Navigate to="/" replace />;
+  if (!initialized || loading) {
+    return (
+      <div className="min-h-screen bg-[#0f0f0f] flex flex-col items-center justify-center gap-3 text-white">
+        <div className="w-10 h-10 border-4 border-purple-600 border-t-transparent rounded-full animate-spin" />
+        <p className="text-xs text-gray-400 font-mono">Authenticating session...</p>
+      </div>
+    );
+  }
+
+  if (!user) {
+    console.log("[AUTH_BOOT] ProtectedRoute: unauthenticated user, redirecting to /");
+    return <Navigate to="/" replace />;
+  }
+
   return <>{children}</>;
 }
 
@@ -25,62 +38,77 @@ function App() {
   const loading = useAuthStore((s) => s.loading);
 
   useEffect(() => {
+    console.log("[APP_BOOT] App mounted, initializing auth state...");
     initialize();
   }, [initialize]);
 
   if (!initialized || loading) {
     return (
-      <div className="min-h-screen bg-[#0f0f0f] flex items-center justify-center">
+      <div className="min-h-screen bg-[#0f0f0f] flex flex-col items-center justify-center gap-3 text-white">
         <div className="w-10 h-10 border-4 border-purple-600 border-t-transparent rounded-full animate-spin" />
+        <p className="text-xs text-gray-400 font-mono">Loading DevBrain...</p>
       </div>
     );
   }
 
   return (
-    <ToastProvider>
-      <Routes>
-      <Route path="/" element={<HomePage />} />
-      <Route
-        path="/dashboard"
-        element={
-          <ProtectedRoute>
-            <DashboardPage />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/repos/:repoId"
-        element={
-          <ProtectedRoute>
-            <ErrorBoundary>
-              <RepoDetailPage />
-            </ErrorBoundary>
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/repos/:repoId/impact"
-        element={
-          <ProtectedRoute>
-            <ImpactRadarPage />
-          </ProtectedRoute>
-        }
-      />
-
-      <Route
-        path="/repos/:repoId/architecture"
-        element={
-          <ProtectedRoute>
-            <ErrorBoundary>
-              <ArchitectureExplorerPage />
-            </ErrorBoundary>
-          </ProtectedRoute>
-        }
-      />
-
-      <Route path="/auth/error" element={<AuthErrorPage />} />
-    </Routes>
-    </ToastProvider>
+    <ErrorBoundary>
+      <ToastProvider>
+        <Routes>
+          <Route
+            path="/"
+            element={
+              <ErrorBoundary fallbackTitle="Home Page Error">
+                <HomePage />
+              </ErrorBoundary>
+            }
+          />
+          <Route
+            path="/dashboard"
+            element={
+              <ProtectedRoute>
+                <ErrorBoundary fallbackTitle="Dashboard Error">
+                  <DashboardPage />
+                </ErrorBoundary>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/repos/:repoId"
+            element={
+              <ProtectedRoute>
+                <ErrorBoundary fallbackTitle="Repository Detail Error">
+                  <RepoDetailPage />
+                </ErrorBoundary>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/repos/:repoId/impact"
+            element={
+              <ProtectedRoute>
+                <ErrorBoundary fallbackTitle="Impact Radar Error">
+                  <ImpactRadarPage />
+                </ErrorBoundary>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/repos/:repoId/architecture"
+            element={
+              <ProtectedRoute>
+                <ErrorBoundary fallbackTitle="Architecture Explorer Error">
+                  <ArchitectureExplorerPage />
+                </ErrorBoundary>
+              </ProtectedRoute>
+            }
+          />
+          <Route path="/auth/error" element={<AuthErrorPage />} />
+          {/* Catch-all fallback route */}
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </ToastProvider>
+    </ErrorBoundary>
   );
 }
 
