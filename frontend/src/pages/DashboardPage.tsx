@@ -7,6 +7,7 @@ import {
   Trash2,
   ChevronRight,
   Zap,
+  Network,
   RotateCw,
   CheckCircle2,
   AlertCircle,
@@ -474,18 +475,18 @@ export default function DashboardPage() {
                           <button
                             onClick={() => handleAnalyze(repo.id)}
                             disabled={analyzingIds.has(repo.id)}
-                            className="px-2.5 py-0.5 text-xs font-medium border border-gray-700 hover:border-gray-500 rounded text-gray-200 hover:text-white bg-transparent hover:bg-white/5 transition-all disabled:opacity-50 disabled:cursor-not-allowed lowercase flex items-center gap-1"
-                            title="Trigger real repository analysis"
+                            className="px-2.5 py-0.5 text-xs font-medium border border-gray-700 hover:border-gray-500 rounded text-gray-200 hover:text-white bg-transparent hover:bg-white/5 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
+                            title="Trigger repository analysis"
                           >
                             {analyzingIds.has(repo.id) ? (
                               <>
                                 <Loader2 className="w-3 h-3 animate-spin text-purple-400 shrink-0" />
-                                <span>analyzing...</span>
+                                <span>Analyzing...</span>
                               </>
                             ) : repoStatus === "failed" ? (
-                              <span>retry analysis</span>
+                              <span>Retry Analysis</span>
                             ) : (
-                              <span>re-analyze</span>
+                              <span>Re-analyze</span>
                             )}
                           </button>
                         )}
@@ -537,7 +538,7 @@ export default function DashboardPage() {
                         </span>
                       </div>
 
-                      {/* Three-dot Kebab Menu (Impact Radar, Delete Repository) */}
+                      {/* Three-dot Kebab Menu (Impact Radar, Architecture Graph, Delete Repository) */}
                       <div className="relative">
                         <button
                           onClick={(e) => {
@@ -556,7 +557,7 @@ export default function DashboardPage() {
                             onClick={(e) => e.stopPropagation()}
                           >
                             <div className="py-1">
-                              {/* Impact Radar (only if analyzed) */}
+                              {/* Impact Radar & Architecture Graph (only if analyzed) */}
                               {isAnalyzed(repoStatus) && (
                                 <>
                                   <Link
@@ -566,6 +567,15 @@ export default function DashboardPage() {
                                   >
                                     <Zap className="w-4 h-4 text-yellow-400" />
                                     Impact Radar
+                                  </Link>
+
+                                  <Link
+                                    to={`/repos/${repo.id}/architecture`}
+                                    className="w-full flex items-center gap-2 px-4 py-2 text-sm text-left text-gray-300 hover:bg-gray-800 hover:text-white transition-colors"
+                                    onClick={() => setMenuOpenId(null)}
+                                  >
+                                    <Network className="w-4 h-4 text-teal-400" />
+                                    Architecture Graph
                                   </Link>
 
                                   <div className="h-px bg-gray-800 my-1" />
