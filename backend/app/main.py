@@ -44,9 +44,19 @@ if settings.sentry_dsn:
 
 app = FastAPI(title="DevBrain API", version="1.0.0")
 
+origins = [settings.frontend_url.rstrip("/")]
+if settings.environment.lower() == "development":
+    origins.extend([
+        "http://localhost:5173",
+        "http://localhost:3000",
+        "http://127.0.0.1:5173",
+    ])
+# Remove duplicates while preserving order
+origins = list(dict.fromkeys(origins))
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[settings.frontend_url],
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

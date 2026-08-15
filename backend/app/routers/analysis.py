@@ -85,6 +85,10 @@ async def trigger_analysis(
     await db.commit()
 
     logger.info("Queued analysis job %s for %s", job.id, repo.full_name)
+    logger.info(
+        "[ANALYSIS] job_created job_id=%s repo_id=%s status=queued user_id=%s",
+        job.id, repo.id, current_user.id,
+    )
 
     return AnalysisTriggerResponse(
         repo_id=str(repo.id),

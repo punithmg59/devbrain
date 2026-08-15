@@ -267,7 +267,7 @@ async def test_full_pipeline_with_mock_analysis(integration_db):
         async def mock_compute_scores(repo_id_str):
             return {}
 
-        with patch("app.services.pipeline.orchestrator.run_repo_analysis", side_effect=mock_run_repo_analysis), \
+        with patch("app.services.analysis.run_repo_analysis", side_effect=mock_run_repo_analysis), \
              patch("app.services.pipeline.orchestrator.compute_scores", side_effect=mock_compute_scores):
 
             # Run the pipeline
@@ -341,7 +341,7 @@ async def test_duplicate_job_protection(integration_db):
             mock_score_calls.append(repo_id_str)
             return {}
 
-        with patch("app.services.pipeline.orchestrator.run_repo_analysis", side_effect=mock_run_repo_analysis_fail), \
+        with patch("app.services.analysis.run_repo_analysis", side_effect=mock_run_repo_analysis_fail), \
              patch("app.services.pipeline.orchestrator.compute_scores", side_effect=mock_compute_scores_never):
 
             await orch.run_pipeline(job_id)

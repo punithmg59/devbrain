@@ -13,7 +13,13 @@ from app.config import get_settings
 from app.database import get_db
 from app.models import Session, User
 from app.schemas.auth import UserResponse
-from app.utils.auth import create_session_token, get_current_user, hash_token
+from app.utils.auth import (
+    create_session_token,
+    delete_session_cookie,
+    get_current_user,
+    hash_token,
+    set_session_cookie,
+)
 from app.utils.github import clear_github_token, save_github_token
 from app.utils.oauth_state_storage import OAuthStateStorage, get_oauth_state_storage
 
@@ -144,28 +150,13 @@ async def github_callback(
     await db.flush()
 
     response = RedirectResponse(url=f"{settings.frontend_url}/dashboard", status_code=302)
-    
-    # For localhost development, set domain to allow cookie sharing across ports
-    # In production, this should be set to the actual domain
-    cookie_domain = "localhost" if settings.environment == "development" else None
-    
-    response.set_cookie(
-        key="session_token",
-        value=raw_token,
-        httponly=True,
-        samesite="lax",
-        max_age=SESSION_MAX_AGE,
-        secure=settings.environment != "development",
-        domain=cookie_domain,
-        path="/",
-    )
+    set_session_cookie(response, raw_token)
     logger.info(
-        "[OAuth] session cookie set for user_id=%s token_hash=%s… frontend_url=%s app_url=%s domain=%s",
+        "[OAuth] session cookie set for user_id=%s token_hash=%s… frontend_url=%s app_url=%s",
         user.id,
         hash_token(raw_token)[:12],
         settings.frontend_url,
         settings.app_url,
-        cookie_domain,
     )
     return response
 
@@ -192,5 +183,5 @@ async def logout(
     await clear_github_token(current_user)
 
     response = JSONResponse(content={"message": "Logged out successfully"})
-    response.delete_cookie(key="session_token")
+    delete_session_cookie(response)
     return response

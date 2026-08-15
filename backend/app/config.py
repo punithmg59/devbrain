@@ -6,6 +6,16 @@ class Settings(BaseSettings):
     # Database
     database_url: str
     direct_url: str
+    # Path to the Supabase CA certificate file for SSL verification.
+    # Download from: Supabase Dashboard → Database Settings → SSL Configuration.
+    # Set DATABASE_SSL_CA_CERT_PATH to the file path in your environment/Railway.
+    # If both are set, DATABASE_SSL_CA_CERT_PATH takes precedence over DATABASE_SSL_CA_CERT.
+    database_ssl_ca_cert_path: str | None = None
+    # Inline PEM certificate content (alternative to file path).
+    # Useful when Railway environment variables cannot conveniently store file paths.
+    # Set DATABASE_SSL_CA_CERT to the full PEM certificate string.
+    # Use \n for newlines in Railway variables, the app will decode them automatically.
+    database_ssl_ca_cert: str | None = None
 
     # App
     app_url: str = "https://devbrain-backend-production.up.railway.app"

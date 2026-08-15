@@ -484,12 +484,13 @@ export default function RepoDetailPage() {
 
   const handleReanalyze = async () => {
     if (!repoId) return;
+    console.log(`[ANALYSIS_UI] analyze_clicked repo_id=${repoId} (from detail page)`);
     setReanalyzing(true);
     try {
       await repoService.analyze(repoId);
       refetchRepo();
-    } catch {
-      // silent
+    } catch (err) {
+      console.error(`[ANALYSIS_UI] analyze_error repo_id=${repoId}:`, err);
     } finally {
       setReanalyzing(false);
     }
@@ -837,10 +838,10 @@ export default function RepoDetailPage() {
                     onClick={handleReanalyze}
                     disabled={reanalyzing}
                     className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-purple-600/20 hover:bg-purple-600/30 border border-purple-500/40 text-purple-300 hover:text-white rounded-lg transition-colors disabled:opacity-50"
-                    title="Re-run codebase analysis"
+                    title={isAnalyzed(repo.analysis_status) ? "Re-run codebase analysis" : "Run codebase analysis"}
                   >
                     <RefreshCw className={`w-3.5 h-3.5 ${reanalyzing ? "animate-spin" : ""}`} />
-                    Re-analyze
+                    {isAnalyzed(repo.analysis_status) ? "Re-analyze" : "Analyze"}
                   </button>
                 </div>
               </div>

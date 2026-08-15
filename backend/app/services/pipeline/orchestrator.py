@@ -27,6 +27,11 @@ from app.services.pipeline.bulk_writer import (
 
 logger = logging.getLogger(__name__)
 
+# Worker poll counter — used to emit [ANALYSIS] worker_poll log every N cycles
+# without flooding Railway logs on every 1-second poll.
+_POLL_LOG_INTERVAL = 30  # log once every ~30 seconds
+_poll_counter: int = 0
+
 # Unique identifier for this worker process instance.
 # Used in heartbeat so we can detect stale jobs from dead workers.
 WORKER_ID = f"{socket.gethostname()}:{os.getpid()}"
@@ -128,7 +133,7 @@ async def _claim_next_job() -> tuple[UUID | None, str | None]:
             )
 
             logger.info(
-                "Claiming job %s (reason: %s, prior_status: %s)",
+                "[ANALYSIS] job_claiming job_id=%s reason=%s prior_status=%s",
                 cand_id, match_reason, cand_status,
             )
 
@@ -185,7 +190,7 @@ async def _claim_next_job() -> tuple[UUID | None, str | None]:
             )
 
             logger.info(
-                "Claiming job %s (reason: %s, prior_status: %s)",
+                "[ANALYSIS] job_claiming job_id=%s reason=%s prior_status=%s",
                 cand_id, match_reason, cand_status,
             )
 
@@ -278,6 +283,7 @@ async def run_pipeline(job_id: UUID) -> None:
         - Aborts immediately if run_repo_analysis() returns False (duplicate/error).
     """
     started_at = time.monotonic()
+    logger.info("[ANALYSIS] pipeline_started job_id=%s", job_id)
 
     # Start heartbeat keepalive so the job is never reclaimed while alive.
     hb_stop = asyncio.Event()
@@ -323,15 +329,20 @@ async def run_pipeline(job_id: UUID) -> None:
         try:
             # ── STAGE: cloning ──────────────────────────────────────────
             # Already set by _claim_next_job. Log that we are starting.
-            logger.info("Pipeline starting for repo %s", repo.full_name)
+            logger.info(
+                "[ANALYSIS] pipeline_started job_id=%s repo_id=%s repo=%s worker_id=%s",
+                job_id, repo.id, repo.full_name, WORKER_ID,
+            )
 
             # ── STAGE: scanning ────────────────────────────────────────
+            logger.info("[ANALYSIS] stage=scanning job_id=%s", job_id)
             await reporter.set_stage("scanning")
 
             logger.info("Executing Repository Analyzer V2 pipeline for repo %s", repo.full_name)
             job.incremental = False
 
             # ── STAGE: parsing ────────────────────────────────────────
+            logger.info("[ANALYSIS] stage=parsing job_id=%s", job_id)
             await reporter.set_stage("parsing")
 
             # ── CALL EXISTING ANALYSIS LOGIC ────────────────────────────
@@ -369,6 +380,7 @@ async def run_pipeline(job_id: UUID) -> None:
             function_count = repo.total_functions or 0
 
             # ── STAGE: building_graph ─────────────────────────────────
+            logger.info("[ANALYSIS] stage=building_graph job_id=%s", job_id)
             await reporter.set_stage("building_graph")
 
             # Query nodes and edges from PostgreSQL after analysis
@@ -397,6 +409,7 @@ async def run_pipeline(job_id: UUID) -> None:
                 files=file_count,
             )
             
+            logger.info("[ANALYSIS] stage=saving job_id=%s", job_id)
             await reporter.set_stage("saving")
 
             # ── FINALIZE ───────────────────────────────────────────────
@@ -406,21 +419,33 @@ async def run_pipeline(job_id: UUID) -> None:
             await reporter.finish(final, elapsed)
 
             logger.info(
-                "Pipeline complete: job=%s repo=%s status=%s elapsed=%.1fs",
-                job_id, repo.full_name, final, elapsed,
+                "[ANALYSIS] pipeline_completed job_id=%s repo_id=%s status=%s elapsed=%.1fs",
+                job_id, repo.id, final, elapsed,
             )
 
         except CloneError as exc:
+            elapsed = time.monotonic() - started_at
+            logger.error(
+                "[ANALYSIS] pipeline_failed job_id=%s error_type=CloneError elapsed=%.1fs",
+                job_id, elapsed,
+            )
             await reporter.fail(f"Clone failed after retries: {exc}")
 
         except asyncio.CancelledError:
+            elapsed = time.monotonic() - started_at
+            logger.warning(
+                "[ANALYSIS] pipeline_cancelled job_id=%s elapsed=%.1fs",
+                job_id, elapsed,
+            )
             await reporter.fail("Worker was cancelled or restarted")
             raise  # allow graceful shutdown to propagate
 
         except Exception as exc:
+            elapsed = time.monotonic() - started_at
             logger.exception(
-                "Unhandled exception in pipeline for job %s repo %s",
-                job_id, repo.full_name if repo else "unknown",
+                "[ANALYSIS] pipeline_failed job_id=%s error_type=%s elapsed=%.1fs repo=%s",
+                job_id, type(exc).__name__, elapsed,
+                repo.full_name if repo else "unknown",
             )
             await reporter.fail(f"{type(exc).__name__}: {exc}")
 
@@ -454,9 +479,23 @@ async def worker_loop(stop_event: asyncio.Event) -> None:
     """
     logger.info("DevBrain worker loop started (worker_id=%s, concurrency=%d)",
                 WORKER_ID, _CONCURRENCY)
+    logger.info(
+        "[ANALYSIS] worker_started worker_id=%s concurrency=%d",
+        WORKER_ID, _CONCURRENCY,
+    )
 
+    global _poll_counter
     while not stop_event.is_set():
         try:
+            # Emit worker_poll log every _POLL_LOG_INTERVAL cycles (~30s) so
+            # Railway logs confirm the worker is alive without flooding.
+            _poll_counter += 1
+            if _poll_counter % _POLL_LOG_INTERVAL == 1:
+                logger.info(
+                    "[ANALYSIS] worker_poll worker_id=%s running_jobs=%d",
+                    WORKER_ID, len(_running_jobs),
+                )
+
             job_id, match_reason = await _claim_next_job()
 
             if job_id is None:
@@ -475,6 +514,10 @@ async def worker_loop(stop_event: asyncio.Event) -> None:
                 continue
 
             logger.info("Worker claimed job %s (reason: %s)", job_id, match_reason)
+            logger.info(
+                "[ANALYSIS] job_claimed job_id=%s worker_id=%s reason=%s",
+                job_id, WORKER_ID, match_reason,
+            )
 
             # Acquire semaphore before launching task so we cap concurrency.
             await _SEM.acquire()
