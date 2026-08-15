@@ -19,6 +19,13 @@ logger = logging.getLogger(__name__)
 ANALYSIS_TIMEOUT_SECONDS = 600
 STALE_ANALYSIS_MINUTES = 3
 
+# ── New: per-stage timeouts configurable via env ──────────────────────────────
+# Clone timeout: gitpython has no built-in timeout; we enforce it here.
+CLONE_TIMEOUT_SECONDS = int(os.getenv("ANALYSIS_CLONE_TIMEOUT_SECONDS", "120"))
+
+# Persist timeout: covers the db.flush() calls for files/nodes/edges.
+PERSIST_TIMEOUT_SECONDS = int(os.getenv("ANALYSIS_PERSIST_TIMEOUT_SECONDS", "180"))
+
 # ── Cleanup tuning ────────────────────────────────────────────────────
 # Re-analysis must delete the repo's prior graph. A single
 # `DELETE FROM edges WHERE repo_id = ?` removing tens of thousands of rows
@@ -75,11 +82,14 @@ async def run_repo_analysis(repo_id: UUID, user_id: UUID) -> bool:
     """
     repo_key = str(repo_id)
     if repo_key in _active_analyses:
-        logger.info("Analysis already running for repo %s", repo_id)
+        logger.info("[ANALYSIS] job_skipped repo_id=%s reason=already_running", repo_id)
         return False
 
     _active_analyses.add(repo_key)
     clone_path: str | None = None
+    run_start = time.monotonic()
+
+    logger.info("[ANALYSIS] job_started repo_id=%s", repo_id)
 
     from app.database import async_session_factory
 
@@ -90,17 +100,18 @@ async def run_repo_analysis(repo_id: UUID, user_id: UUID) -> bool:
             )
             repo = result.scalar_one_or_none()
             if not repo:
-                logger.error("Repo %s not found for analysis", repo_id)
+                logger.error("[ANALYSIS] job_aborted repo_id=%s reason=repo_not_found", repo_id)
                 return False
 
             user_result = await db.execute(select(User).where(User.id == user_id))
             user = user_result.scalar_one_or_none()
             if not user:
-                logger.error("User %s not found for analysis", user_id)
+                logger.error("[ANALYSIS] job_aborted repo_id=%s reason=user_not_found user_id=%s", repo_id, user_id)
                 return False
 
             token = await get_github_token(user, db)
             if not token:
+                logger.error("[ANALYSIS] job_aborted repo_id=%s reason=no_github_token", repo_id)
                 repo.analysis_status = "failed"
                 await db.commit()
                 return False
@@ -108,20 +119,83 @@ async def run_repo_analysis(repo_id: UUID, user_id: UUID) -> bool:
             repo.analysis_status = "analyzing"
             await db.commit()
 
-            clone_path = await asyncio.to_thread(
-                clone_github_repo,
-                repo.full_name,
-                token,
-                repo.default_branch,
+            # ── STAGE: clone ─────────────────────────────────────────────────
+            # CRITICAL FIX: gitpython clone_from() has no built-in timeout.
+            # Without asyncio.wait_for, a stalled network connection blocks
+            # this thread permanently, causing the job to hang forever while
+            # the frontend keeps polling the "analyzing" status.
+            t0 = time.monotonic()
+            logger.info(
+                "[ANALYSIS] clone_started repo_id=%s full_name=%s timeout=%ds",
+                repo_id, repo.full_name, CLONE_TIMEOUT_SECONDS,
+            )
+            try:
+                clone_path = await asyncio.wait_for(
+                    asyncio.to_thread(
+                        clone_github_repo,
+                        repo.full_name,
+                        token,
+                        repo.default_branch,
+                    ),
+                    timeout=CLONE_TIMEOUT_SECONDS,
+                )
+            except asyncio.TimeoutError:
+                elapsed = time.monotonic() - t0
+                logger.error(
+                    "[ANALYSIS] clone_timeout repo_id=%s elapsed=%.1fs timeout=%ds",
+                    repo_id, elapsed, CLONE_TIMEOUT_SECONDS,
+                )
+                raise  # caught by the outer asyncio.TimeoutError handler
+            logger.info(
+                "[ANALYSIS] clone_completed repo_id=%s elapsed=%.1fs",
+                repo_id, time.monotonic() - t0,
             )
 
+            # ── STAGE: clear prior analysis ───────────────────────────────────
+            t0 = time.monotonic()
+            logger.info("[ANALYSIS] clear_started repo_id=%s", repo_id)
             cleanup_clean = await _clear_repo_analysis(db, repo.id)
+            logger.info(
+                "[ANALYSIS] clear_completed repo_id=%s elapsed=%.1fs clean=%s",
+                repo_id, time.monotonic() - t0, cleanup_clean,
+            )
 
+            # ── STAGE: v2 collection ──────────────────────────────────────────
+            t0 = time.monotonic()
+            logger.info(
+                "[ANALYSIS] v2_collection_started repo_id=%s timeout=%ds",
+                repo_id, ANALYSIS_TIMEOUT_SECONDS,
+            )
             payload = await asyncio.wait_for(
                 asyncio.to_thread(run_v2_analysis_collection, clone_path, str(repo.id)),
                 timeout=ANALYSIS_TIMEOUT_SECONDS,
             )
-            stats = await _persist_analysis(db, repo, payload)
+            logger.info(
+                "[ANALYSIS] v2_collection_completed repo_id=%s files=%d nodes=%d edges=%d elapsed=%.1fs",
+                repo_id,
+                payload.total_files,
+                len(payload.nodes),
+                len(payload.edges),
+                time.monotonic() - t0,
+            )
+
+            # ── STAGE: persist ────────────────────────────────────────────────
+            # CRITICAL FIX: _persist_analysis has multiple db.flush() calls
+            # that can stall on DB slowdowns. Enforce a hard timeout.
+            t0 = time.monotonic()
+            logger.info(
+                "[ANALYSIS] persist_started repo_id=%s nodes=%d edges=%d timeout=%ds",
+                repo_id, len(payload.nodes), len(payload.edges), PERSIST_TIMEOUT_SECONDS,
+            )
+            stats = await asyncio.wait_for(
+                _persist_analysis(db, repo, payload),
+                timeout=PERSIST_TIMEOUT_SECONDS,
+            )
+            logger.info(
+                "[ANALYSIS] persist_completed repo_id=%s files=%d functions=%d elapsed=%.1fs",
+                repo_id, stats["total_files"], stats["total_functions"],
+                time.monotonic() - t0,
+            )
 
             failed_count = len(payload.failed_files)
             # A single unparseable file, or a cleanup that timed out, must NEVER
@@ -146,6 +220,9 @@ async def run_repo_analysis(repo_id: UUID, user_id: UUID) -> bool:
                     cleanup_clean,
                 )
 
+            # ── STAGE: alias seeding ──────────────────────────────────────────
+            t0 = time.monotonic()
+            logger.info("[ANALYSIS] alias_seed_started repo_id=%s", repo_id)
             try:
                 from app.services.alias_seeder import (
                     index_node_embeddings,
@@ -157,14 +234,21 @@ async def run_repo_analysis(repo_id: UUID, user_id: UUID) -> bool:
                 await link_workflow_aliases_to_nodes(repo.id, db)
                 await index_node_embeddings(repo.id, db)
                 await db.commit()
+                logger.info(
+                    "[ANALYSIS] alias_seed_completed repo_id=%s elapsed=%.1fs",
+                    repo_id, time.monotonic() - t0,
+                )
             except Exception:
                 await db.rollback()
                 logger.warning(
-                    "Alias/embedding seed skipped for %s",
-                    repo_id,
+                    "[ANALYSIS] alias_seed_skipped repo_id=%s elapsed=%.1fs",
+                    repo_id, time.monotonic() - t0,
                     exc_info=True,
                 )
 
+            # ── STAGE: workflow discovery ─────────────────────────────────────
+            t0 = time.monotonic()
+            logger.info("[ANALYSIS] workflow_discovery_started repo_id=%s", repo_id)
             try:
                 from app.services.workflow_discovery_service import (
                     WorkflowDiscoveryService,
@@ -175,18 +259,20 @@ async def run_repo_analysis(repo_id: UUID, user_id: UUID) -> bool:
                 )
                 await db.commit()
                 logger.info(
-                    "Workflow discovery for %s: %d workflows",
-                    repo.full_name,
-                    wf_count,
+                    "[ANALYSIS] workflow_discovery_completed repo_id=%s workflows=%d elapsed=%.1fs",
+                    repo_id, wf_count, time.monotonic() - t0,
                 )
             except Exception:
                 await db.rollback()
                 logger.warning(
-                    "Workflow discovery skipped for %s",
-                    repo_id,
+                    "[ANALYSIS] workflow_discovery_skipped repo_id=%s elapsed=%.1fs",
+                    repo_id, time.monotonic() - t0,
                     exc_info=True,
                 )
 
+            # ── STAGE: impact precompute ──────────────────────────────────────
+            t0 = time.monotonic()
+            logger.info("[ANALYSIS] impact_precompute_started repo_id=%s", repo_id)
             try:
                 from app.services.critical_path_service import CriticalPathService
                 from app.services.impact_precompute_service import ImpactPrecomputeService
@@ -197,27 +283,33 @@ async def run_repo_analysis(repo_id: UUID, user_id: UUID) -> bool:
                 )
                 await db.commit()
                 logger.info(
-                    "Impact precompute for %s: %d node metrics",
-                    repo.full_name,
-                    metric_count,
+                    "[ANALYSIS] impact_precompute_completed repo_id=%s metrics=%d elapsed=%.1fs",
+                    repo_id, metric_count, time.monotonic() - t0,
                 )
             except Exception:
                 await db.rollback()
                 logger.warning(
-                    "Impact precompute skipped for %s",
-                    repo_id,
+                    "[ANALYSIS] impact_precompute_skipped repo_id=%s elapsed=%.1fs",
+                    repo_id, time.monotonic() - t0,
                     exc_info=True,
                 )
 
+            total_elapsed = time.monotonic() - run_start
             logger.info(
-                "Analysis completed for %s: %d files, %d functions",
+                "[ANALYSIS] job_completed repo_id=%s files=%d functions=%d elapsed=%.1fs",
                 repo_id,
                 stats["total_files"],
                 stats["total_functions"],
+                total_elapsed,
             )
             return True
+
         except asyncio.TimeoutError:
-            logger.error("Analysis timed out for repo %s", repo_id)
+            elapsed = time.monotonic() - run_start
+            logger.error(
+                "[ANALYSIS] job_timeout repo_id=%s elapsed=%.1fs",
+                repo_id, elapsed,
+            )
             await db.rollback()
             result = await db.execute(select(Repo).where(Repo.id == repo_id))
             repo = result.scalar_one_or_none()
@@ -225,8 +317,13 @@ async def run_repo_analysis(repo_id: UUID, user_id: UUID) -> bool:
                 repo.analysis_status = "failed"
                 await db.commit()
             return False
+
         except Exception:
-            logger.exception("Analysis failed for repo %s", repo_id)
+            elapsed = time.monotonic() - run_start
+            logger.exception(
+                "[ANALYSIS] job_failed repo_id=%s elapsed=%.1fs",
+                repo_id, elapsed,
+            )
             await db.rollback()
             result = await db.execute(select(Repo).where(Repo.id == repo_id))
             repo = result.scalar_one_or_none()
@@ -234,6 +331,7 @@ async def run_repo_analysis(repo_id: UUID, user_id: UUID) -> bool:
                 repo.analysis_status = "failed"
                 await db.commit()
             return False
+
         finally:
             if clone_path:
                 await asyncio.to_thread(cleanup_clone, clone_path)
@@ -442,4 +540,3 @@ async def _persist_analysis(db: AsyncSession, repo: Repo, payload: AnalysisPaylo
         "total_functions": payload.total_functions,
         "total_lines": payload.total_lines,
     }
-
