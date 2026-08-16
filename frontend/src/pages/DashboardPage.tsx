@@ -238,6 +238,7 @@ export default function DashboardPage() {
           return {
             ...repo,
             analysis_status: progress.status || repo.analysis_status,
+            has_completed_analysis: (progress.status === "completed" || progress.status === "completed_with_warnings") ? true : repo.has_completed_analysis,
             total_files: progress.files_total || repo.total_files || 0,
             total_functions: progress.functions_found || repo.total_functions || 0,
           };
@@ -483,10 +484,10 @@ export default function DashboardPage() {
                                 <Loader2 className="w-3 h-3 animate-spin text-purple-400 shrink-0" />
                                 <span>Analyzing...</span>
                               </>
-                            ) : repoStatus === "failed" ? (
-                              <span>Retry Analysis</span>
-                            ) : (
+                            ) : repo.has_completed_analysis ? (
                               <span>Re-analyze</span>
+                            ) : (
+                              <span>Analyze</span>
                             )}
                           </button>
                         )}

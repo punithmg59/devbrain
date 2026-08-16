@@ -9,6 +9,9 @@ import {
   Server,
   Database,
   FileCode2,
+  Code,
+  Layers,
+  Info,
 } from "lucide-react";
 import NodeTypeBadge from "../NodeTypeBadge";
 import type {
@@ -93,7 +96,81 @@ export default function DetailsPanel({
                   )}
                 </div>
               )}
+              {details?.signature && (
+                <div className="mt-2 text-xs text-gray-400 font-mono break-all">
+                  {details.signature}
+                </div>
+              )}
             </div>
+
+            {/* Parent Class (for methods) */}
+            {details?.parent_class && (
+              <div className="mb-4 rounded-lg border border-white/10 bg-white/[0.02] p-3">
+                <div className="mb-1.5 flex items-center gap-1.5 text-gray-400">
+                  <Layers className="h-3.5 w-3.5" />
+                  <span className="text-xs font-semibold uppercase tracking-wide">Parent Class</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => onSelectRelated(details.parent_class!)}
+                  className="group flex w-full items-center gap-2 rounded-md border border-white/5 bg-white/[0.02] px-2.5 py-1.5 text-left transition-colors hover:border-white/10 hover:bg-white/5"
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate font-mono text-xs text-gray-200">{details.parent_class.name}</div>
+                    {details.parent_class.file_path && (
+                      <div className="truncate text-[10px] text-gray-600">{details.parent_class.file_path}</div>
+                    )}
+                  </div>
+                  <NodeTypeBadge type={details.parent_class.node_type} />
+                </button>
+              </div>
+            )}
+
+            {/* Source Code */}
+            {details?.source_code && (
+              <div className="mb-4 rounded-lg border border-white/10 bg-white/[0.02] p-3">
+                <div className="mb-2 flex items-center gap-1.5 text-gray-400">
+                  <Code className="h-3.5 w-3.5" />
+                  <span className="text-xs font-semibold uppercase tracking-wide">Source Code</span>
+                </div>
+                <pre className="overflow-x-auto rounded bg-black/30 p-2 text-[10px] text-gray-300 font-mono">
+                  <code>{details.source_code}</code>
+                </pre>
+              </div>
+            )}
+
+            {/* Evidence Summary */}
+            {details && (
+              <div className="mb-4 rounded-lg border border-white/10 bg-white/[0.02] p-3">
+                <div className="mb-2 flex items-center gap-1.5 text-gray-400">
+                  <Info className="h-3.5 w-3.5" />
+                  <span className="text-xs font-semibold uppercase tracking-wide">Evidence</span>
+                </div>
+                <div className="text-[11px] text-gray-400">
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <span className="text-gray-500">Inbound edges:</span>{" "}
+                      <span className="text-gray-300">{details.total_inbound_edges}</span>
+                    </div>
+                    <div>
+                      <span className="text-gray-500">Outbound edges:</span>{" "}
+                      <span className="text-gray-300">{details.total_outbound_edges}</span>
+                    </div>
+                  </div>
+                  {details.edge_types_found.length > 0 && (
+                    <div className="mt-2">
+                      <span className="text-gray-500">Edge types:</span>{" "}
+                      <span className="text-gray-300">{details.edge_types_found.join(", ")}</span>
+                    </div>
+                  )}
+                  {details.edge_types_found.length === 0 && (
+                    <div className="mt-2 text-gray-500 italic">
+                      No relationships detected in repository analysis
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
 
             {/* Health Metrics & Impact */}
             {health && selected && (() => {
@@ -211,7 +288,7 @@ function RelationSection({
         <span className="ml-auto text-[10px] text-gray-600">{hint}</span>
       </div>
       {nodes.length === 0 ? (
-        <p className="px-1 pb-1 text-xs text-gray-600">None</p>
+        <p className="px-1 pb-1 text-xs text-gray-600 italic">None detected</p>
       ) : (
         <ul className="space-y-1">
           {nodes.map((n, i) => {
@@ -261,7 +338,7 @@ function EmptyState() {
       </div>
       <h3 className="mb-1 text-sm font-semibold text-gray-300">Nothing selected</h3>
       <p className="text-xs leading-relaxed text-gray-500">
-        Select an entity from the list to inspect its file, callers, callees, and dependencies here.
+        Select a function, class, or method to inspect its source code, relationships, and impact.
       </p>
     </div>
   );

@@ -28,6 +28,7 @@ class RepoResponse(BaseModel):
     is_private: bool
     language: str | None
     analysis_status: str
+    has_completed_analysis: bool
     total_files: int
     total_functions: int
     total_lines: int

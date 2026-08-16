@@ -215,7 +215,7 @@ export default function ImpactRadarPage() {
             </div>
           </div>
           <div className="text-xs text-gray-500 font-mono">
-            Graph-First Blast Analysis
+            Code Change Impact Analysis
           </div>
         </div>
       </header>
@@ -229,15 +229,15 @@ export default function ImpactRadarPage() {
             <div>
               <h2 className="text-sm font-semibold text-gray-300 flex items-center gap-2">
                 <Search className="w-4 h-4 text-purple-400" />
-                Configure Analysis
+                Analyze a Code Change
               </h2>
-              <p className="text-xs text-gray-500 mt-1">Select code node and scenario to simulate blast radius</p>
+              <p className="text-xs text-gray-500 mt-1">Select a function, class, or API route and see what could be affected by changing it.</p>
             </div>
 
             {/* Target search field */}
             <div className="relative">
               <label className="text-[10px] uppercase tracking-wider text-gray-500 font-bold block mb-1.5">
-                Node / Symbol Name
+                Function / Class / API Route
               </label>
               <div className="relative">
                 <input
@@ -292,7 +292,7 @@ export default function ImpactRadarPage() {
             {/* Scenario Picker */}
             <div>
               <label className="text-[10px] uppercase tracking-wider text-gray-500 font-bold block mb-1.5">
-                Change Scenario
+                Change Type
               </label>
               <div className="grid grid-cols-2 gap-2">
                 {(['delete', 'modify', 'rename', 'move'] as const).map((s) => (
@@ -351,12 +351,12 @@ export default function ImpactRadarPage() {
               {loading ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin" />
-                  Analyzing Graph...
+                  Analyzing Dependencies...
                 </>
               ) : (
                 <>
                   <Zap className="w-4 h-4 fill-black" />
-                  Run Impact Analysis
+                  Analyze Impact
                 </>
               )}
             </button>
@@ -423,9 +423,9 @@ export default function ImpactRadarPage() {
               <div className="p-4 rounded-full bg-white/5 mb-4 border border-white/10">
                 <Sparkles className="w-6 h-6 text-purple-400" />
               </div>
-              <h3 className="font-semibold text-gray-200 text-sm">No analysis active</h3>
+              <h3 className="font-semibold text-gray-200 text-sm">No Impact Analysis Yet</h3>
               <p className="text-xs text-gray-500 mt-2 text-center max-w-xs leading-relaxed">
-                Select a code node/symbol to traverse the repository dependency graph.
+                Select a function, class, or API route to see which parts of your codebase could be affected.
               </p>
             </div>
           )}
@@ -718,7 +718,7 @@ export default function ImpactRadarPage() {
           ) : (
             <div className="bg-[#18181b]/10 border border-white/5 rounded-2xl p-6 shadow-xl flex flex-col items-center justify-center text-center h-[300px]">
               <Layers className="w-5 h-5 text-gray-600 mb-2" />
-              <span className="text-xs text-gray-500">Traverse graph to see dependency tree</span>
+              <span className="text-xs text-gray-500">Explore Code Dependencies</span>
             </div>
           )}
         </aside>

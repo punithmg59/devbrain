@@ -199,6 +199,41 @@ class ArchitectureService:
             return None
         node, file_path, language = row
 
+        # Get source code (decrypt if encrypted)
+        source_code = None
+        if node.raw_code_encrypted:
+            from app.security.encryption import get_encryption_service
+            try:
+                encryption_service = get_encryption_service()
+                source_code = await encryption_service.decrypt(node.raw_code_encrypted)
+            except Exception as e:
+                logger.warning(f"Failed to decrypt source code for node {node.id}: {e}")
+                source_code = node.raw_code  # Fallback to unencrypted if available
+        elif node.raw_code:
+            source_code = node.raw_code
+
+        # Get parent class if this is a method (check full_path for class.method pattern)
+        parent_class = None
+        if node.node_type == "method" and "." in node.full_path:
+            # Extract class name from full_path (e.g., "FaceDetector.__del__" -> "FaceDetector")
+            class_name = node.full_path.split(".")[-2]
+            # Try to find the parent class node
+            parent_row = (
+                await db.execute(
+                    select(Node, RepoFile.file_path, RepoFile.language)
+                    .outerjoin(RepoFile, Node.file_id == RepoFile.id)
+                    .where(
+                        Node.repo_id == repo_id,
+                        Node.node_type == "class",
+                        Node.name == class_name,
+                        Node.file_id == node.file_id,  # Same file
+                    )
+                )
+            ).first()
+            if parent_row:
+                parent_node, parent_fp, parent_lang = parent_row
+                parent_class = _summary(parent_node, parent_fp, parent_lang)
+
         # Outgoing: node → others
         ToNode = aliased(Node)
         out_rows = (
@@ -221,6 +256,13 @@ class ArchitectureService:
             )
         ).all()
 
+        # Track all edge types found for evidence
+        all_edge_types = set()
+        for etype, _, _, _ in out_rows:
+            all_edge_types.add(etype)
+        for etype, _, _, _ in in_rows:
+            all_edge_types.add(etype)
+
         callees: list[ArchNodeSummary] = []
         services: list[ArchNodeSummary] = []
         tables: list[RelatedNode] = []
@@ -242,11 +284,17 @@ class ArchitectureService:
         return NodeDetails(
             node=_summary(node, file_path, language),
             file_path=file_path,
+            signature=node.signature,
+            source_code=source_code,
+            parent_class=parent_class,
             callers=callers,
             callees=callees,
             services=services,
             tables=tables,
             dependencies=dependencies,
+            total_inbound_edges=len(in_rows),
+            total_outbound_edges=len(out_rows),
+            edge_types_found=list(all_edge_types),
         )
 
     # ── Repository-level dependency edges ─────────────────────────────

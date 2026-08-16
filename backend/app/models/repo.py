@@ -49,6 +49,7 @@ class Repo(Base):
         String(64), nullable=True
     )
     last_analyzed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    has_completed_analysis: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     total_files: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     total_functions: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     total_lines: Mapped[int] = mapped_column(Integer, default=0, server_default="0")

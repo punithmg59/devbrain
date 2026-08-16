@@ -10,6 +10,7 @@ export interface ConnectedRepo {
   is_private: boolean;
   language: string | null;
   analysis_status: string;
+  has_completed_analysis: boolean;
   total_files: number;
   total_functions: number;
   total_lines: number;
