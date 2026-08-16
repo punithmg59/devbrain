@@ -80,6 +80,44 @@ def _parse_decorator_expression(dec_str: str, range_obj: Optional[NodeRange] = N
     )
 
 
+def _extract_api_route_info(decorators: List[ExtractedDecorator]) -> Tuple[Optional[str], Optional[str]]:
+    """
+    Extract HTTP method and route path from decorators if this is an API route.
+    
+    Supports FastAPI/Flask patterns like:
+    - @app.get("/users")
+    - @router.post("/users/{id}")
+    - @api_router.put("/items")
+    - @delete("/items/{item_id}")
+    
+    Returns (http_method, route_path) or (None, None) if not an API route.
+    """
+    http_methods = {"get", "post", "put", "delete", "patch", "head", "options", "trace"}
+    
+    for decorator in decorators:
+        # Pattern 1: @app.get("/path"), @router.post("/path")
+        if "." in decorator.name:
+            parts = decorator.name.split(".")
+            method = parts[-1].lower()
+            if method in http_methods and decorator.arguments:
+                # Extract route path from first argument (usually a string)
+                route_arg = decorator.arguments[0] if decorator.arguments else ""
+                # Remove quotes from the route path
+                route_path = route_arg.strip('"\'')
+                if route_path:
+                    return method.upper(), route_path
+        
+        # Pattern 2: @get("/path"), @post("/path") (direct method decorators)
+        method = decorator.name.lower()
+        if method in http_methods and decorator.arguments:
+            route_arg = decorator.arguments[0] if decorator.arguments else ""
+            route_path = route_arg.strip('"\'')
+            if route_path:
+                return method.upper(), route_path
+    
+    return None, None
+
+
 def _infer_expression_kind(node: ASTNode) -> str:
     """Determine syntactic kind of an assigned expression node."""
     if not node.children:
@@ -491,6 +529,9 @@ class PythonSemanticExtractor:
             for d in node.metadata.decorators
         ]
 
+        # Extract API route information if this is an API endpoint
+        http_method, route_path = _extract_api_route_info(decorators)
+
         # Method modifiers
         method_modifiers = self._determine_method_modifiers(decorators, enclosing_class)
 
@@ -513,6 +554,8 @@ class PythonSemanticExtractor:
             enclosing_function=enclosing_function,
             method_modifiers=method_modifiers,
             is_generator=is_generator,
+            http_method=http_method,
+            route_path=route_path,
         )
 
         # Process function body (local variables and nested functions)

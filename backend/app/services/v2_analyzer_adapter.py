@@ -380,8 +380,8 @@ def run_v2_analysis_collection(clone_path: str, repository_id: str) -> AnalysisP
                 "imports": [],
                 "is_exported": True,
                 "is_async": False,
-                "http_method": None,
-                "route_path": None,
+                "http_method": sym.get("http_method"),
+                "route_path": sym.get("route_path"),
             }
             payload.nodes.append(node_dict)
             existing_node_paths.add(full_path)
