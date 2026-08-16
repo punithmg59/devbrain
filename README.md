@@ -1,182 +1,144 @@
+
 # DevBrain
 
-> GitHub Copilot helps you write code. DevBrain helps you safely change code.
+> Understand the impact before you change the code.
 
-DevBrain is an AI-powered Change Intelligence platform that helps software engineers understand the impact of code changes before they modify a codebase.
+DevBrain is a developer tool that analyzes GitHub repositories and builds a structural view of the codebase.
 
-Instead of simply generating code, DevBrain analyzes repositories, understands architecture, builds dependency graphs, and answers questions like:
+It helps developers explore:
 
-- What breaks if I remove this function?
-- Which APIs depend on this module?
-- What files should I test after this change?
-- What is the safest migration plan?
-- Which components will be affected?
-
----
-
-# Why DevBrain?
-
-Large software projects become difficult to understand over time.
-
-Developers spend hours answering questions such as:
-
-- Where is this function used?
-- What happens if I rename this API?
-- Which services depend on this class?
-- Why did production break after this change?
-
-DevBrain provides engineering intelligence before code changes are made.
-
----
-
-# Features
-
-## Repository Analysis
-
-- Analyze complete GitHub repositories
-- Parse source code using AST
-- Build project architecture
-- Extract functions, classes, APIs and dependencies
-
----
-
-## AI Change Intelligence
-
-Ask questions like:
-
-> What happens if I delete authentication?
-
-DevBrain explains:
-
-- Impacted files
+- Functions
+- Classes
+- Methods
+- API routes
+- Files
 - Dependencies
-- Risks
-- Migration strategy
-- Testing checklist
-- Confidence score
-
----
-
-## Architecture Intelligence
-
-Visualize
-
-- Folder structure
-- Module relationships
-- Service dependencies
-- API connections
-
----
-
-## Engineering Memory
-
-Understand
-
-- Previous architectural decisions
-- Repository history
+- Callers and callees
 - Code relationships
-- Engineering context
+- Potentially affected components
+
+The current core feature is **Impact Radar**.
+
+## Live Demo
+
+🌐 **Try DevBrain:**  
+https://devbrain-gilt.vercel.app/
+
+💻 **Source Code:**  
+https://github.com/punithmg59/devbrain
 
 ---
 
-## Dependency Graph
+## What is DevBrain?
 
-Automatically build
+Changing one function can affect many other parts of a codebase.
 
-- Function calls
-- Class relationships
-- Import graph
-- API dependencies
+Finding those relationships manually becomes difficult as a repository grows.
 
----
+DevBrain analyzes the repository structure and helps answer questions like:
 
-## AI Reports
+> "If I change this function, what else could be affected?"
 
-Generate
-
-- Change reports
-- Risk analysis
-- Migration plans
-- Testing recommendations
-- Engineering summaries
+Instead of only showing code, DevBrain maps relationships between code elements and provides evidence for those relationships.
 
 ---
 
-# Tech Stack
+## Current Features
 
-## Frontend
+### 🔎 Repository Analysis
 
-- React
-- TypeScript
-- Tailwind CSS
-- Vite
+Connect a GitHub repository and run an analysis of its codebase.
 
-## Backend
+DevBrain extracts structural information about the repository, including:
 
-- Python
-- FastAPI
-- SQLAlchemy
+- Files
+- Functions
+- Classes
+- Methods
+- API routes
+- Code relationships
+- Dependencies
 
-## Database
-
-- PostgreSQL
-- Supabase
-
-## AI
-
-- Groq
-- LLMs
-- AST Analysis
-- Graph-based reasoning
-
-## Infrastructure
-
-- Docker
-- GitHub OAuth
-- REST APIs
+Analysis runs as a background job so large repositories do not block the API request.
 
 ---
 
-# Project Vision
+### 🧭 Explore Repository
 
-DevBrain aims to become the operating system for software engineering teams by combining repository intelligence, AI reasoning, and architecture awareness.
+After analysis, explore the repository through:
 
-Rather than replacing developers, DevBrain helps them make safer and more informed engineering decisions.
+- Functions
+- Classes
+- Methods
+- API routes
+- Repository statistics
 
----
+Selecting a code element opens its available repository intelligence, including:
 
-# Current Status
+- Source location
+- Parent class/file
+- Callers
+- Callees
+- Dependencies
+- Related files
+- API relationships
+- Potentially affected components
+- Repository evidence
 
-Current Version: MVP
-
-Implemented:
-
-- GitHub Authentication
-- Repository Import
-- Repository Analysis
-- AST Parsing
-- Dependency Graph
-- AI Change Intelligence
-- Repository Dashboard
-- Engineering Reports
-
-Currently under active development.
-
----
-
-# Roadmap
-
-- Root Cause Intelligence
-- Architecture Visualization
-- CI/CD Integration
-- Pull Request Analysis
-- Team Knowledge Graph
-- Enterprise Features
+Information is shown from the repository analysis rather than generated mock data.
 
 ---
 
-# Author
+### 🎯 Impact Radar
 
-**Punith MG**
+Impact Radar is the core DevBrain feature.
 
-Building AI products for the future of software engineering.
+Select a:
+
+- Function
+- Class
+- Method
+- API route
+
+Then choose a change type:
+
+- Modify
+- Rename
+- Move
+- Delete
+
+DevBrain uses the repository's dependency relationships to determine potentially affected code.
+
+The goal is to help developers understand the consequences of a change **before modifying the code**.
+
+---
+
+## How It Works
+
+```text
+GitHub Repository
+        │
+        ▼
+ Repository Analysis
+        │
+        ▼
+ Code / AST Analysis
+        │
+        ▼
+ Functions / Classes / Methods / API Routes
+        │
+        ▼
+ Nodes + Relationships
+        │
+        ▼
+ PostgreSQL
+        │
+        ▼
+ Dependency Graph
+        │
+        ├───────────────┐
+        ▼               ▼
+ Explore Repository   Impact Radar
+        │               │
+        ▼               ▼
+ Code Intelligence   Change Impact
