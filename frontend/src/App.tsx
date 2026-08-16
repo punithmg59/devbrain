@@ -7,7 +7,6 @@ import HomePage from "./pages/HomePage";
 import DashboardPage from "./pages/DashboardPage";
 import RepoDetailPage from "./pages/RepoDetailPage";
 import ImpactRadarPage from "./pages/ImpactRadarPage";
-import ArchitectureExplorerPage from "./pages/ArchitectureExplorerPage";
 import AuthErrorPage from "./pages/AuthErrorPage";
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -89,16 +88,6 @@ function App() {
               <ProtectedRoute>
                 <ErrorBoundary fallbackTitle="Impact Radar Error">
                   <ImpactRadarPage />
-                </ErrorBoundary>
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/repos/:repoId/architecture"
-            element={
-              <ProtectedRoute>
-                <ErrorBoundary fallbackTitle="Architecture Explorer Error">
-                  <ArchitectureExplorerPage />
                 </ErrorBoundary>
               </ProtectedRoute>
             }

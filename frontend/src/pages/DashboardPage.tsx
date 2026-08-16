@@ -7,7 +7,6 @@ import {
   Trash2,
   ChevronRight,
   Zap,
-  Network,
   RotateCw,
   CheckCircle2,
   AlertCircle,
@@ -539,7 +538,7 @@ export default function DashboardPage() {
                         </span>
                       </div>
 
-                      {/* Three-dot Kebab Menu (Impact Radar, Architecture Graph, Delete Repository) */}
+                      {/* Three-dot Kebab Menu (Impact Radar, Delete Repository) */}
                       <div className="relative">
                         <button
                           onClick={(e) => {
@@ -558,7 +557,7 @@ export default function DashboardPage() {
                             onClick={(e) => e.stopPropagation()}
                           >
                             <div className="py-1">
-                              {/* Impact Radar & Architecture Graph (only if analyzed) */}
+                              {/* Impact Radar (only if analyzed) */}
                               {isAnalyzed(repoStatus) && (
                                 <>
                                   <Link
@@ -568,15 +567,6 @@ export default function DashboardPage() {
                                   >
                                     <Zap className="w-4 h-4 text-yellow-400" />
                                     Impact Radar
-                                  </Link>
-
-                                  <Link
-                                    to={`/repos/${repo.id}/architecture`}
-                                    className="w-full flex items-center gap-2 px-4 py-2 text-sm text-left text-gray-300 hover:bg-gray-800 hover:text-white transition-colors"
-                                    onClick={() => setMenuOpenId(null)}
-                                  >
-                                    <Network className="w-4 h-4 text-teal-400" />
-                                    Architecture Graph
                                   </Link>
 
                                   <div className="h-px bg-gray-800 my-1" />

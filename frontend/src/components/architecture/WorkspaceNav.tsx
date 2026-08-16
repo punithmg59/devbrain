@@ -3,7 +3,6 @@ import {
   LayoutDashboard,
   FolderTree,
   Radar,
-  Network,
   type LucideIcon,
 } from "lucide-react";
 
@@ -46,12 +45,6 @@ export default function WorkspaceNav({ repoId, repoName }: WorkspaceNavProps) {
       to: `/repos/${repoId}/impact`,
       icon: Radar,
       match: (p) => p.endsWith("/impact"),
-    },
-    {
-      label: "Architecture",
-      to: `/repos/${repoId}/architecture`,
-      icon: Network,
-      match: (p) => p === `/repos/${repoId}/architecture`,
     },
   ];
 
