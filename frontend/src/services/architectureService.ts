@@ -51,11 +51,18 @@ export interface ArchitectureComponents {
 export interface NodeDetails {
   node: ArchNodeSummary;
   file_path: string | null;
+  signature: string | null;
+  source_code: string | null;
+  parent_class: ArchNodeSummary | null;
   callers: ArchNodeSummary[];
   callees: ArchNodeSummary[];
   services: ArchNodeSummary[];
   tables: RelatedNode[];
   dependencies: RelatedNode[];
+  // Evidence tracking
+  total_inbound_edges: number;
+  total_outbound_edges: number;
+  edge_types_found: string[];
 }
 
 export interface DependencyEdge {

@@ -55,11 +55,18 @@ class ArchitectureComponents(BaseModel):
 class NodeDetails(BaseModel):
     node: ArchNodeSummary
     file_path: str | None = None
+    signature: str | None = None
+    source_code: str | None = None
+    parent_class: ArchNodeSummary | None = None
     callers: list[ArchNodeSummary]
     callees: list[ArchNodeSummary]
     services: list[ArchNodeSummary]
     tables: list[RelatedNode]
     dependencies: list[RelatedNode]
+    # Evidence tracking
+    total_inbound_edges: int = 0
+    total_outbound_edges: int = 0
+    edge_types_found: list[str] = []
 
 
 class DependencyEdge(BaseModel):

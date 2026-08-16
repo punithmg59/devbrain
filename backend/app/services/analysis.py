@@ -208,6 +208,7 @@ async def run_repo_analysis(repo_id: UUID, user_id: UUID) -> bool:
             repo.analysis_status = (
                 "completed_with_warnings" if has_warnings else "completed"
             )
+            repo.has_completed_analysis = True
             repo.last_analyzed_at = datetime.now(timezone.utc)
             await db.commit()
 
