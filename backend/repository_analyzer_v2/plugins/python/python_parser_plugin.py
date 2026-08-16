@@ -469,13 +469,17 @@ class PythonParserPlugin(ParserPlugin):
                 mod = res.module
                 if mod:
                     for fn in mod.functions:
+                        # Determine if this is an API route
+                        kind = "api_route" if (fn.http_method and fn.route_path) else "function"
                         raw_symbols.append({
-                            "kind": "function",
+                            "kind": kind,
                             "name": fn.name,
                             "file_path": job.file.path,
                             "range": fn.range.model_dump() if fn.range else None,
                             "docstring": fn.docstring,
                             "signature": fn.name,
+                            "http_method": fn.http_method,
+                            "route_path": fn.route_path,
                         })
                     for cls in mod.classes:
                         raw_symbols.append({
@@ -487,13 +491,17 @@ class PythonParserPlugin(ParserPlugin):
                             "signature": cls.name,
                         })
                         for m in cls.methods:
+                            # Determine if this is an API route
+                            kind = "api_route" if (m.http_method and m.route_path) else "method"
                             raw_symbols.append({
-                                "kind": "method",
+                                "kind": kind,
                                 "name": m.name,
                                 "file_path": job.file.path,
                                 "range": m.range.model_dump() if m.range else None,
                                 "docstring": m.docstring,
                                 "signature": f"{cls.name}.{m.name}",
+                                "http_method": m.http_method,
+                                "route_path": m.route_path,
                             })
                     for imp in mod.imports:
                         raw_imports.append({

@@ -110,6 +110,8 @@ class ExtractedFunction(BaseModel):
     method_modifiers: List[MethodModifier] = Field(default_factory=list, description="Method modifiers (instance, static, class, property, abstract)")
     is_generator: bool = Field(default=False, description="True if function contains yield / yield from statements")
     local_variables: List[ExtractedVariable] = Field(default_factory=list, description="Local variables defined in function body")
+    http_method: Optional[str] = Field(default=None, description="HTTP method if this is an API route (GET, POST, PUT, DELETE, etc.)")
+    route_path: Optional[str] = Field(default=None, description="Route path if this is an API route (e.g., '/users/{id}')")
 
 
 class ExtractedClass(BaseModel):
